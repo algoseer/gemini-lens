@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="image" accept="image/*">
+        <select name="prompt">
+            {% for key, description in prompts.items() %}
+                <option value="{{ key }}">{{ description }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Analyze</button>
+    </form>
+</body>
+</html>
