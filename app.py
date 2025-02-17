@@ -1,58 +1,51 @@
-from flask import Flask, render_template, request
+import streamlit as st
 from PIL import Image
 import io, os
-import requests
 import google.generativeai as genai
-#from google.api_core.client_options import ClientOptions
-
-
-app = Flask(__name__)
 
 # Get your API key from Google Cloud Platform
 api_key = os.environ.get("GOOGLE_API_KEY")
-
-#client_options = ClientOptions(api_endpoint='us-west-aiplatform.googleapis.com')
-genai.configure(api_key = api_key)
-model = genai.GenerativeModel("gemini-pro-vision")
+genai.configure(api_key=api_key)
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 # Define your prompt choices with descriptions
 prompt_options = {
+    "receipt_analysis": """
+            This is the result of OCR on a grocery receipt.
+            I need you to parse the receipt to only output a table of items and cost. 
+            The first coloum should be name of grocery item and second should be costs. 
+            Output in json format with keys "item", "cost" don't output anything except json.
+            Some of the item names might have OCR errors, try to fix them to match items that might be close to existing products.
+    """,
     "object_detection": "Identify objects within the image.",
     "scene_description": "Describe the overall scene and context.",
     "color_analysis": "Analyze the dominant colors and their distribution.",
     "text_extraction": "Extract any text visible within the image."
 }
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    if request.method == "POST":
-        # Get the image file and selected prompt
-        image_file = request.files["image"]
-        selected_prompt = request.form.get("prompt")
+st.title("Gemini Image Analysis")
 
-        # Generate the prompt for Gemini
-        gemini_prompt = f"Analyze this image to perform the following {selected_prompt}."
+selected_prompt = st.selectbox("Select an analysis type:", list(prompt_options.keys()))
 
-        # Prepare the image for Gemini
-        image_bytes = image_file.read()
-        image_pil = Image.open(io.BytesIO(image_bytes))
+img_file_buffer = st.camera_input("Take a picture")
 
-        # Call Gemini for analysis
+if img_file_buffer is not None:
+    # To read image file buffer as a PIL Image:
+    image = Image.open(img_file_buffer)
+
+    if st.button("Analyze Image"):
+        gemini_prompt = f"Analyze this image to perform the following {prompt_options[selected_prompt]}."
+
         try:
             response = model.generate_content(
                 [
                     gemini_prompt,
-                    image_pil,
+                    image,
                 ]
             )
             analysis = response.text
+            st.write("## Analysis Results:")
+            st.write(analysis)
 
         except Exception as e:
-            analysis = f"Error processing image: {e}" 
-
-        return render_template("results.html", analysis=analysis, prompt=selected_prompt)
-
-    return render_template("index.html", prompts=prompt_options)
-
-if __name__ == "__main__":
-    app.run(debug=True)
+            st.error(f"Error processing image: {e}")
