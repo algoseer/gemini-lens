@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 from datetime import date, datetime
 from typing import List, Dict, Any
 
@@ -12,6 +13,9 @@ import dash_bootstrap_components as dbc
 from . import database as db
 from .models import FridgeItem
 from .gemini_service import process_receipt_to_fridge_items
+
+# Check if debug mode is enabled via environment variable
+DEBUG_MODE = os.environ.get("DEBUG_MODE", "false").lower() in ("true", "1", "yes")
 
 # Initialize the Dash app
 app = dash.Dash(
@@ -281,7 +285,14 @@ def refresh_dashboard(trigger, intervals):
 
 
 def create_debug_panel(debug_info: Dict[str, Any]) -> html.Div:
-    """Create a collapsible debug panel showing raw Gemini response."""
+    """Create a collapsible debug panel showing raw Gemini response.
+    
+    Only shown when DEBUG_MODE environment variable is set to true.
+    """
+    # Only show debug panel if DEBUG_MODE is enabled
+    if not DEBUG_MODE:
+        return html.Div()
+    
     if not debug_info:
         return html.Div()
     

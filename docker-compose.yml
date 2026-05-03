@@ -13,4 +13,7 @@ services:
       - ./data:/app/data
     env_file:
       - .env
+    environment:
+      # Set to "true" to show debug panel with raw Gemini response
+      - DEBUG_MODE=${DEBUG_MODE:-false}
     restart: unless-stopped
