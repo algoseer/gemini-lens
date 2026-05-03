@@ -391,33 +391,37 @@ def process_receipt(contents, filename, purchase_date_str, current_trigger):
             date_class = "date-fallback"
         
         if not fridge_items:
-            # No items found - show info message
-            status = html.Div(
-                className="progress-container",
-                children=[
-                    html.Div(
-                        className="progress-step completed",
-                        children=[
-                            html.Span("✓", className="step-icon"),
-                            html.Span("Image uploaded", className="step-text")
-                        ]
-                    ),
-                    html.Div(
-                        className="progress-step completed",
-                        children=[
-                            html.Span("✓", className="step-icon"),
-                            html.Span("Receipt analyzed", className="step-text")
-                        ]
-                    ),
-                    html.Div(
-                        className="progress-step warning",
-                        children=[
-                            html.Span("⚠", className="step-icon"),
-                            html.Span("No refrigerated items found", className="step-text")
-                        ]
-                    )
-                ]
-            )
+            # No items found - show info message with debug panel
+            status = html.Div([
+                html.Div(
+                    className="progress-container",
+                    children=[
+                        html.Div(
+                            className="progress-step completed",
+                            children=[
+                                html.Span("✓", className="step-icon"),
+                                html.Span("Image uploaded", className="step-text")
+                            ]
+                        ),
+                        html.Div(
+                            className="progress-step completed",
+                            children=[
+                                html.Span("✓", className="step-icon"),
+                                html.Span("Receipt analyzed", className="step-text")
+                            ]
+                        ),
+                        html.Div(
+                            className="progress-step warning",
+                            children=[
+                                html.Span("⚠", className="step-icon"),
+                                html.Span("No refrigerated items found", className="step-text")
+                            ]
+                        )
+                    ]
+                ),
+                # Debug panel (collapsible) - show even when no items found
+                create_debug_panel(debug_info)
+            ])
             alert = html.Div(
                 className="alert alert-info",
                 children=[
