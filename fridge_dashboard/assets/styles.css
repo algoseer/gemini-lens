@@ -448,6 +448,68 @@ body {
     border: 1px solid #ffc107;
 }
 
+/* Debug Panel */
+.debug-panel {
+    margin-top: 20px;
+    background: #2d2d2d;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.debug-summary {
+    padding: 12px 15px;
+    background: #3d3d3d;
+    color: #e0e0e0;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.9rem;
+    user-select: none;
+    transition: background 0.2s ease;
+}
+
+.debug-summary:hover {
+    background: #4d4d4d;
+}
+
+.debug-summary::-webkit-details-marker {
+    color: #888;
+}
+
+.debug-content {
+    padding: 15px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.debug-json {
+    margin: 0;
+    padding: 0;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: #a8d4a8;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Scrollbar styling for debug panel */
+.debug-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.debug-content::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+.debug-content::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.debug-content::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .dashboard-header h1 {

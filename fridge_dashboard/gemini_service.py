@@ -100,7 +100,7 @@ def _get_image_mime_type(image_data: bytes) -> str:
         return 'image/jpeg'
 
 
-def parse_receipt_image(image_data: bytes) -> Tuple[List[Dict[str, Any]], Optional[date]]:
+def parse_receipt_image(image_data: bytes) -> Tuple[List[Dict[str, Any]], Optional[date], Dict[str, Any]]:
     """
     Parse a receipt image and extract refrigerated food items and purchase date.
     
@@ -108,15 +108,24 @@ def parse_receipt_image(image_data: bytes) -> Tuple[List[Dict[str, Any]], Option
         image_data: Raw image bytes
         
     Returns:
-        Tuple of (list of item dictionaries, extracted purchase date or None)
+        Tuple of (list of item dictionaries, extracted purchase date or None, raw debug info)
     """
+    debug_info = {
+        "raw_response": None,
+        "parsed_json": None,
+        "error": None,
+        "model": MODEL_ID
+    }
+    
     if client is None:
-        print("Error: Gemini client not initialized. Set GOOGLE_API_KEY environment variable.")
-        return [], None
+        debug_info["error"] = "Gemini client not initialized. Set GOOGLE_API_KEY environment variable."
+        print(f"Error: {debug_info['error']}")
+        return [], None, debug_info
     
     try:
         # Detect MIME type
         mime_type = _get_image_mime_type(image_data)
+        debug_info["mime_type"] = mime_type
         
         # Create image part using the new SDK
         image_part = types.Part.from_bytes(data=image_data, mime_type=mime_type)
@@ -127,8 +136,12 @@ def parse_receipt_image(image_data: bytes) -> Tuple[List[Dict[str, Any]], Option
             contents=[RECEIPT_PARSING_PROMPT, image_part]
         )
         
+        # Store raw response
+        raw_text = response.text
+        debug_info["raw_response"] = raw_text
+        
         # Parse JSON response
-        response_text = response.text.strip()
+        response_text = raw_text.strip()
         
         # Handle markdown code blocks if present
         if response_text.startswith("```"):
@@ -137,6 +150,8 @@ def parse_receipt_image(image_data: bytes) -> Tuple[List[Dict[str, Any]], Option
             response_text = "\n".join(lines[1:-1])
         
         result = json.loads(response_text)
+        debug_info["parsed_json"] = result
+        
         items = result.get("items", [])
         
         # Extract purchase date if available
@@ -146,17 +161,20 @@ def parse_receipt_image(image_data: bytes) -> Tuple[List[Dict[str, Any]], Option
             try:
                 extracted_date = datetime.strptime(date_str, "%Y-%m-%d").date()
             except ValueError:
+                debug_info["date_parse_error"] = f"Could not parse date: {date_str}"
                 print(f"Could not parse date: {date_str}")
         
-        return items, extracted_date
+        return items, extracted_date, debug_info
         
     except json.JSONDecodeError as e:
+        debug_info["error"] = f"JSON parse error: {str(e)}"
         print(f"Error parsing Gemini response as JSON: {e}")
         print(f"Response was: {response.text if 'response' in dir() else 'N/A'}")
-        return [], None
+        return [], None, debug_info
     except Exception as e:
+        debug_info["error"] = f"Processing error: {str(e)}"
         print(f"Error processing receipt: {e}")
-        return [], None
+        return [], None, debug_info
 
 
 def get_shelf_life_for_items(item_names: List[str]) -> Dict[str, int]:
@@ -213,7 +231,7 @@ def get_shelf_life_for_items(item_names: List[str]) -> Dict[str, int]:
 def process_receipt_to_fridge_items(
     image_data: bytes,
     fallback_date: Optional[date] = None
-) -> Tuple[List[FridgeItem], Optional[date]]:
+) -> Tuple[List[FridgeItem], Optional[date], Dict[str, Any]]:
     """
     Process a receipt image and create FridgeItem objects.
     
@@ -227,23 +245,26 @@ def process_receipt_to_fridge_items(
         fallback_date: Date to use if not found on receipt (defaults to today)
         
     Returns:
-        Tuple of (List of FridgeItem objects, extracted purchase date or None)
+        Tuple of (List of FridgeItem objects, extracted purchase date or None, debug info dict)
     """
     if fallback_date is None:
         fallback_date = date.today()
     
-    # Step 1: Parse receipt (now returns items and extracted date)
-    parsed_items, extracted_date = parse_receipt_image(image_data)
+    # Step 1: Parse receipt (now returns items, extracted date, and debug info)
+    parsed_items, extracted_date, debug_info = parse_receipt_image(image_data)
     
     # Use extracted date if available, otherwise use fallback
     purchase_date = extracted_date if extracted_date else fallback_date
+    debug_info["used_date"] = str(purchase_date)
+    debug_info["date_source"] = "extracted" if extracted_date else "fallback"
     
     if not parsed_items:
-        return [], extracted_date
+        return [], extracted_date, debug_info
     
     # Step 2: Get shelf life for all items
     item_names = [item["item"] for item in parsed_items]
     shelf_life_map = get_shelf_life_for_items(item_names)
+    debug_info["shelf_life_map"] = shelf_life_map
     
     # Step 3: Create FridgeItem objects
     fridge_items = []
@@ -261,7 +282,8 @@ def process_receipt_to_fridge_items(
         )
         fridge_items.append(fridge_item)
     
-    return fridge_items, extracted_date
+    debug_info["items_created"] = len(fridge_items)
+    return fridge_items, extracted_date, debug_info
 
 
 # Default shelf life values for common items (fallback)

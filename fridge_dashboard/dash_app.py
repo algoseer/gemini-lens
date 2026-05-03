@@ -1,8 +1,9 @@
 """Main Dash application for the Fridge Health Dashboard."""
 
 import base64
+import json
 from datetime import date, datetime
-from typing import List
+from typing import List, Dict, Any
 
 import dash
 from dash import dcc, html, Input, Output, State, callback, ALL, ctx
@@ -279,6 +280,31 @@ def refresh_dashboard(trigger, intervals):
     return create_stats_cards(items), create_items_grid(items)
 
 
+def create_debug_panel(debug_info: Dict[str, Any]) -> html.Div:
+    """Create a collapsible debug panel showing raw Gemini response."""
+    if not debug_info:
+        return html.Div()
+    
+    # Format the debug info as pretty JSON
+    formatted_json = json.dumps(debug_info, indent=2, default=str)
+    
+    return html.Details(
+        className="debug-panel",
+        children=[
+            html.Summary("🔧 Debug: Raw Gemini Response", className="debug-summary"),
+            html.Div(
+                className="debug-content",
+                children=[
+                    html.Pre(
+                        formatted_json,
+                        className="debug-json"
+                    )
+                ]
+            )
+        ]
+    )
+
+
 def create_parsing_results_table(fridge_items: List[FridgeItem]) -> html.Div:
     """Create a detailed results table showing parsed items."""
     if not fridge_items:
@@ -353,8 +379,8 @@ def process_receipt(contents, filename, purchase_date_str, current_trigger):
             fallback_date = date.today()
         
         # Process receipt with Gemini (this does the actual work)
-        # Now returns tuple of (items, extracted_date)
-        fridge_items, extracted_date = process_receipt_to_fridge_items(image_data, fallback_date)
+        # Now returns tuple of (items, extracted_date, debug_info)
+        fridge_items, extracted_date, debug_info = process_receipt_to_fridge_items(image_data, fallback_date)
         
         # Determine which date was used
         if extracted_date:
@@ -445,7 +471,9 @@ def process_receipt(contents, filename, purchase_date_str, current_trigger):
                 children=[date_source]
             ),
             # Show detailed results table
-            create_parsing_results_table(fridge_items)
+            create_parsing_results_table(fridge_items),
+            # Debug panel (collapsible)
+            create_debug_panel(debug_info)
         ])
         
         # Success alert with date info
