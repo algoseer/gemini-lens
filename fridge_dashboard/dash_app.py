@@ -153,12 +153,11 @@ def create_item_card(item: FridgeItem) -> html.Div:
                     )
                 ]
             ),
-            # Freshness text
+            # Freshness text (status only, no percentage)
             html.Div(
                 className=f"freshness-text {status_class}",
                 children=[
-                    html.Span(item.status_text),
-                    html.Span(f"{item.freshness_percentage:.0f}%")
+                    html.Span(item.status_text)
                 ]
             )
         ]
