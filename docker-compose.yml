@@ -2,8 +2,11 @@ version: '3.8'
 
 services:
   fridge-dashboard:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: fridge-dashboard
+    privileged: true
     ports:
       - "8050:8050"
     volumes:
