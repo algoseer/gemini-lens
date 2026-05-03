@@ -116,32 +116,30 @@ def create_item_card(item: FridgeItem) -> html.Div:
                     ])
                 ]
             ),
-            # Remaining amount control
+            # Remaining amount slider
             html.Div(
-                className="remaining-row",
+                className="remaining-section",
                 children=[
-                    html.Span("Remaining: ", className="label"),
                     html.Div(
-                        className="remaining-control",
+                        className="remaining-header",
                         children=[
-                            html.Button(
-                                "−",
-                                className="remaining-btn remaining-btn-down",
-                                id={"type": "remaining-down-btn", "index": item.id},
-                                n_clicks=0
-                            ),
+                            html.Span("Remaining: ", className="label"),
                             html.Span(
                                 f"{item.remaining_percentage}%",
                                 className="remaining-value",
                                 id={"type": "remaining-display", "index": item.id}
-                            ),
-                            html.Button(
-                                "+",
-                                className="remaining-btn remaining-btn-up",
-                                id={"type": "remaining-up-btn", "index": item.id},
-                                n_clicks=0
-                            ),
+                            )
                         ]
+                    ),
+                    dcc.Slider(
+                        id={"type": "remaining-slider", "index": item.id},
+                        min=0,
+                        max=100,
+                        step=10,
+                        value=item.remaining_percentage,
+                        marks={0: '0%', 50: '50%', 100: '100%'},
+                        className="remaining-slider",
+                        updatemode='mouseup'
                     )
                 ]
             ),
@@ -682,35 +680,34 @@ def update_shelf_life_buttons(up_clicks, down_clicks, current_trigger):
 
 @callback(
     Output("refresh-trigger", "data", allow_duplicate=True),
-    [Input({"type": "remaining-up-btn", "index": ALL}, "n_clicks"),
-     Input({"type": "remaining-down-btn", "index": ALL}, "n_clicks")],
+    Input({"type": "remaining-slider", "index": ALL}, "value"),
     State("refresh-trigger", "data"),
     prevent_initial_call=True
 )
-def update_remaining_amount(up_clicks, down_clicks, current_trigger):
-    """Update remaining percentage when up/down buttons are clicked."""
+def update_remaining_slider(slider_values, current_trigger):
+    """Update remaining percentage when slider is moved."""
     if not ctx.triggered_id:
         return dash.no_update
     
-    # Get the item ID and button type
+    # Get the item ID
     item_id = ctx.triggered_id["index"]
-    button_type = ctx.triggered_id["type"]
     
     # Get the item from database
     item = db.get_item_by_id(item_id)
     if not item:
         return dash.no_update
     
-    # Calculate new remaining percentage (step by 10%)
-    if button_type == "remaining-up-btn":
-        new_remaining = min(item.remaining_percentage + 10, 100)
-    else:  # remaining-down-btn
-        new_remaining = max(item.remaining_percentage - 10, 0)
+    # Find the new value from the triggered slider
+    items = db.get_all_items()
+    sorted_items = sorted(items, key=lambda x: x.freshness_percentage)
     
-    # Update if changed
-    if new_remaining != item.remaining_percentage:
-        db.update_item(item_id, remaining_percentage=new_remaining)
-        return current_trigger + 1
+    for i, it in enumerate(sorted_items):
+        if it.id == item_id:
+            new_remaining = slider_values[i]
+            if new_remaining is not None and new_remaining != item.remaining_percentage:
+                db.update_item(item_id, remaining_percentage=int(new_remaining))
+                return current_trigger + 1
+            break
     
     return dash.no_update
 
