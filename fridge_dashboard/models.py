@@ -15,6 +15,7 @@ class FridgeItem:
     shelf_life_days: int
     cost: Optional[float] = None
     category: Optional[str] = None
+    remaining_percentage: int = 100  # How much of the item is left (0-100%)
     
     @property
     def days_elapsed(self) -> int:

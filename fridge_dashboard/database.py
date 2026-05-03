@@ -33,9 +33,16 @@ def init_database():
             shelf_life_days INTEGER NOT NULL,
             cost REAL,
             category TEXT,
+            remaining_percentage INTEGER DEFAULT 100,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
+    # Add remaining_percentage column if it doesn't exist (migration)
+    try:
+        cursor.execute("ALTER TABLE fridge_items ADD COLUMN remaining_percentage INTEGER DEFAULT 100")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     
     conn.commit()
     conn.close()
@@ -95,7 +102,7 @@ def get_all_items() -> List[FridgeItem]:
     cursor = conn.cursor()
     
     cursor.execute("""
-        SELECT id, name, purchase_date, shelf_life_days, cost, category
+        SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage
         FROM fridge_items
         ORDER BY purchase_date DESC
     """)
@@ -111,7 +118,8 @@ def get_all_items() -> List[FridgeItem]:
             purchase_date=datetime.fromisoformat(row["purchase_date"]).date(),
             shelf_life_days=row["shelf_life_days"],
             cost=row["cost"],
-            category=row["category"]
+            category=row["category"],
+            remaining_percentage=row["remaining_percentage"] or 100
         ))
     
     return items
@@ -123,7 +131,7 @@ def get_item_by_id(item_id: int) -> Optional[FridgeItem]:
     cursor = conn.cursor()
     
     cursor.execute("""
-        SELECT id, name, purchase_date, shelf_life_days, cost, category
+        SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage
         FROM fridge_items
         WHERE id = ?
     """, (item_id,))
@@ -138,7 +146,8 @@ def get_item_by_id(item_id: int) -> Optional[FridgeItem]:
             purchase_date=datetime.fromisoformat(row["purchase_date"]).date(),
             shelf_life_days=row["shelf_life_days"],
             cost=row["cost"],
-            category=row["category"]
+            category=row["category"],
+            remaining_percentage=row["remaining_percentage"] or 100
         )
     return None
 
@@ -185,7 +194,7 @@ def update_item(item_id: int, **kwargs) -> bool:
         return False
     
     # Build the SET clause dynamically based on provided kwargs
-    valid_fields = {'name', 'shelf_life_days', 'cost', 'category', 'purchase_date'}
+    valid_fields = {'name', 'shelf_life_days', 'cost', 'category', 'purchase_date', 'remaining_percentage'}
     updates = []
     values = []
     

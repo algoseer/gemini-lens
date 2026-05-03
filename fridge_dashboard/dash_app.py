@@ -85,14 +85,27 @@ def create_item_card(item: FridgeItem) -> html.Div:
                         className="shelf-life-row",
                         children=[
                             html.Span("Shelf life: ", className="label"),
-                            dcc.Input(
-                                id={"type": "shelf-life-input", "index": item.id},
-                                type="number",
-                                value=item.shelf_life_days,
-                                className="shelf-life-input",
-                                min=1,
-                                max=365,
-                                debounce=True
+                            html.Div(
+                                className="shelf-life-control",
+                                children=[
+                                    html.Button(
+                                        "−",
+                                        className="shelf-btn shelf-btn-down",
+                                        id={"type": "shelf-down-btn", "index": item.id},
+                                        n_clicks=0
+                                    ),
+                                    html.Span(
+                                        str(item.shelf_life_days),
+                                        className="shelf-life-value",
+                                        id={"type": "shelf-life-display", "index": item.id}
+                                    ),
+                                    html.Button(
+                                        "+",
+                                        className="shelf-btn shelf-btn-up",
+                                        id={"type": "shelf-up-btn", "index": item.id},
+                                        n_clicks=0
+                                    ),
+                                ]
                             ),
                             html.Span(" days", className="days-label")
                         ]
@@ -101,6 +114,35 @@ def create_item_card(item: FridgeItem) -> html.Div:
                         html.Span("Days left: ", className="label"),
                         html.Span(f"{item.days_remaining} days")
                     ])
+                ]
+            ),
+            # Remaining amount control
+            html.Div(
+                className="remaining-row",
+                children=[
+                    html.Span("Remaining: ", className="label"),
+                    html.Div(
+                        className="remaining-control",
+                        children=[
+                            html.Button(
+                                "−",
+                                className="remaining-btn remaining-btn-down",
+                                id={"type": "remaining-down-btn", "index": item.id},
+                                n_clicks=0
+                            ),
+                            html.Span(
+                                f"{item.remaining_percentage}%",
+                                className="remaining-value",
+                                id={"type": "remaining-display", "index": item.id}
+                            ),
+                            html.Button(
+                                "+",
+                                className="remaining-btn remaining-btn-up",
+                                id={"type": "remaining-up-btn", "index": item.id},
+                                n_clicks=0
+                            ),
+                        ]
+                    )
                 ]
             ),
             # Freshness bar
@@ -605,30 +647,70 @@ def update_item_name(names, current_trigger):
 
 @callback(
     Output("refresh-trigger", "data", allow_duplicate=True),
-    Input({"type": "shelf-life-input", "index": ALL}, "value"),
+    [Input({"type": "shelf-up-btn", "index": ALL}, "n_clicks"),
+     Input({"type": "shelf-down-btn", "index": ALL}, "n_clicks")],
     State("refresh-trigger", "data"),
     prevent_initial_call=True
 )
-def update_shelf_life(shelf_lives, current_trigger):
-    """Update shelf life when edited."""
+def update_shelf_life_buttons(up_clicks, down_clicks, current_trigger):
+    """Update shelf life when up/down buttons are clicked."""
     if not ctx.triggered_id:
         return dash.no_update
     
-    # Get the item ID
+    # Get the item ID and button type
     item_id = ctx.triggered_id["index"]
+    button_type = ctx.triggered_id["type"]
     
-    # Find the new shelf life from the triggered input
-    items = db.get_all_items()
-    sorted_items = sorted(items, key=lambda x: x.freshness_percentage)
+    # Get the item from database
+    item = db.get_item_by_id(item_id)
+    if not item:
+        return dash.no_update
     
-    # Find the index of the item in the sorted list
-    for i, item in enumerate(sorted_items):
-        if item.id == item_id:
-            new_shelf_life = shelf_lives[i]
-            if new_shelf_life and new_shelf_life > 0 and new_shelf_life != item.shelf_life_days:
-                db.update_item(item_id, shelf_life_days=int(new_shelf_life))
-                return current_trigger + 1
-            break
+    # Calculate new shelf life
+    if button_type == "shelf-up-btn":
+        new_shelf_life = min(item.shelf_life_days + 1, 365)
+    else:  # shelf-down-btn
+        new_shelf_life = max(item.shelf_life_days - 1, 1)
+    
+    # Update if changed
+    if new_shelf_life != item.shelf_life_days:
+        db.update_item(item_id, shelf_life_days=new_shelf_life)
+        return current_trigger + 1
+    
+    return dash.no_update
+
+
+@callback(
+    Output("refresh-trigger", "data", allow_duplicate=True),
+    [Input({"type": "remaining-up-btn", "index": ALL}, "n_clicks"),
+     Input({"type": "remaining-down-btn", "index": ALL}, "n_clicks")],
+    State("refresh-trigger", "data"),
+    prevent_initial_call=True
+)
+def update_remaining_amount(up_clicks, down_clicks, current_trigger):
+    """Update remaining percentage when up/down buttons are clicked."""
+    if not ctx.triggered_id:
+        return dash.no_update
+    
+    # Get the item ID and button type
+    item_id = ctx.triggered_id["index"]
+    button_type = ctx.triggered_id["type"]
+    
+    # Get the item from database
+    item = db.get_item_by_id(item_id)
+    if not item:
+        return dash.no_update
+    
+    # Calculate new remaining percentage (step by 10%)
+    if button_type == "remaining-up-btn":
+        new_remaining = min(item.remaining_percentage + 10, 100)
+    else:  # remaining-down-btn
+        new_remaining = max(item.remaining_percentage - 10, 0)
+    
+    # Update if changed
+    if new_remaining != item.remaining_percentage:
+        db.update_item(item_id, remaining_percentage=new_remaining)
+        return current_trigger + 1
     
     return dash.no_update
 

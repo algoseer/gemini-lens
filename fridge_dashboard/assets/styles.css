@@ -189,30 +189,59 @@ body {
 .shelf-life-row {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
 }
 
-.shelf-life-input {
-    width: 60px;
-    padding: 4px 8px;
+/* Shelf Life Control with +/- buttons */
+.shelf-life-control {
+    display: inline-flex;
+    align-items: center;
+    background: #f0f2ff;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #e0e4f0;
+}
+
+.shelf-btn {
+    width: 28px;
+    height: 28px;
     border: none;
     background: transparent;
-    font-size: 0.9rem;
-    color: #333;
-    border-radius: 4px;
+    color: #667eea;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.shelf-btn:hover {
+    background: #667eea;
+    color: white;
+}
+
+.shelf-btn:active {
+    transform: scale(0.95);
+}
+
+.shelf-btn-down {
+    border-right: 1px solid #e0e4f0;
+}
+
+.shelf-btn-up {
+    border-left: 1px solid #e0e4f0;
+}
+
+.shelf-life-value {
+    min-width: 36px;
     text-align: center;
-    transition: all 0.2s ease;
-}
-
-.shelf-life-input:hover {
-    background: #f0f2ff;
-}
-
-.shelf-life-input:focus {
-    outline: none;
-    background: #fff;
-    border: 2px solid #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #333;
+    padding: 0 4px;
 }
 
 .days-label {
@@ -220,15 +249,66 @@ body {
     font-size: 0.9rem;
 }
 
-/* Hide number input spinners */
-.shelf-life-input::-webkit-outer-spin-button,
-.shelf-life-input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
+/* Remaining Amount Row */
+.remaining-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed #e0e4f0;
 }
 
-.shelf-life-input[type=number] {
-    -moz-appearance: textfield;
+/* Remaining Amount Control with +/- buttons */
+.remaining-control {
+    display: inline-flex;
+    align-items: center;
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #a5d6a7;
+}
+
+.remaining-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: #43a047;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.remaining-btn:hover {
+    background: #43a047;
+    color: white;
+}
+
+.remaining-btn:active {
+    transform: scale(0.95);
+}
+
+.remaining-btn-down {
+    border-right: 1px solid #a5d6a7;
+}
+
+.remaining-btn-up {
+    border-left: 1px solid #a5d6a7;
+}
+
+.remaining-value {
+    min-width: 48px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #2e7d32;
+    padding: 0 6px;
 }
 
 /* Category */
