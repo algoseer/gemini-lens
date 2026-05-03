@@ -264,6 +264,151 @@ body {
     font-weight: 500;
 }
 
+/* Progress Container */
+.progress-container {
+    background: #f8f9ff;
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 15px;
+}
+
+.progress-step {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.progress-step:last-child {
+    border-bottom: none;
+}
+
+.step-icon {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.progress-step.completed .step-icon {
+    background: #28a745;
+    color: white;
+}
+
+.progress-step.active .step-icon {
+    background: #667eea;
+    color: white;
+}
+
+.progress-step.pending .step-icon {
+    background: #e9ecef;
+    color: #999;
+}
+
+.progress-step.warning .step-icon {
+    background: #ffc107;
+    color: #333;
+}
+
+.progress-step.error .step-icon {
+    background: #dc3545;
+    color: white;
+}
+
+.step-text {
+    font-size: 0.95rem;
+    color: #333;
+}
+
+.progress-step.pending .step-text {
+    color: #999;
+}
+
+.progress-step.completed .step-text {
+    color: #28a745;
+}
+
+.progress-step.error .step-text {
+    color: #dc3545;
+}
+
+/* Spinning animation */
+.spinning {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Parsing Results Table */
+.parsing-results {
+    margin-top: 20px;
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    border: 1px solid #e9ecef;
+}
+
+.results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.results-table th {
+    text-align: left;
+    padding: 12px 10px;
+    background: #f8f9fa;
+    color: #666;
+    font-weight: 600;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.results-table td {
+    padding: 12px 10px;
+    border-bottom: 1px solid #f0f0f0;
+    color: #333;
+}
+
+.results-table tr:last-child td {
+    border-bottom: none;
+}
+
+.results-table tr:hover td {
+    background: #f8f9ff;
+}
+
+/* Badge styles for freshness */
+.badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.badge.fresh {
+    background: #d4edda;
+    color: #155724;
+}
+
+.badge.warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.badge.danger {
+    background: #f8d7da;
+    color: #721c24;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .dashboard-header h1 {

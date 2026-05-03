@@ -265,6 +265,53 @@ def refresh_dashboard(trigger, intervals):
     return create_stats_cards(items), create_items_grid(items)
 
 
+def create_parsing_results_table(fridge_items: List[FridgeItem]) -> html.Div:
+    """Create a detailed results table showing parsed items."""
+    if not fridge_items:
+        return html.Div()
+    
+    # Create table rows
+    rows = []
+    for item in fridge_items:
+        status_class = get_status_class(item.freshness_percentage)
+        rows.append(
+            html.Tr([
+                html.Td(item.name, style={"fontWeight": "500"}),
+                html.Td(item.category or "Other", style={"textTransform": "capitalize"}),
+                html.Td(f"${item.cost:.2f}" if item.cost else "—"),
+                html.Td(f"{item.shelf_life_days} days"),
+                html.Td(
+                    html.Span(
+                        f"{item.freshness_percentage:.0f}%",
+                        className=f"badge {status_class}"
+                    )
+                )
+            ])
+        )
+    
+    return html.Div(
+        className="parsing-results",
+        children=[
+            html.H4("📋 Parsed Items", style={"marginBottom": "15px", "color": "#333"}),
+            html.Table(
+                className="results-table",
+                children=[
+                    html.Thead(
+                        html.Tr([
+                            html.Th("Item"),
+                            html.Th("Category"),
+                            html.Th("Cost"),
+                            html.Th("Shelf Life"),
+                            html.Th("Freshness")
+                        ])
+                    ),
+                    html.Tbody(rows)
+                ]
+            )
+        ]
+    )
+
+
 @callback(
     [Output("upload-status", "children"),
      Output("refresh-trigger", "data"),
@@ -280,14 +327,8 @@ def process_receipt(contents, filename, purchase_date_str, current_trigger):
     if contents is None:
         return dash.no_update, dash.no_update, dash.no_update
     
-    # Show processing status
-    status = html.Div(
-        className="loading",
-        children=["Processing receipt..."]
-    )
-    
     try:
-        # Decode the uploaded image
+        # Step 1: Decode the uploaded image
         content_type, content_string = contents.split(",")
         image_data = base64.b64decode(content_string)
         
@@ -297,42 +338,162 @@ def process_receipt(contents, filename, purchase_date_str, current_trigger):
         else:
             purchase_date = date.today()
         
-        # Process receipt with Gemini
+        # Create progress display
+        progress_steps = html.Div(
+            className="progress-container",
+            children=[
+                html.Div(
+                    className="progress-step completed",
+                    children=[
+                        html.Span("✓", className="step-icon"),
+                        html.Span("Image uploaded", className="step-text")
+                    ]
+                ),
+                html.Div(
+                    className="progress-step active",
+                    children=[
+                        html.Span("⟳", className="step-icon spinning"),
+                        html.Span("Analyzing receipt with Gemini AI...", className="step-text")
+                    ]
+                ),
+                html.Div(
+                    className="progress-step pending",
+                    children=[
+                        html.Span("○", className="step-icon"),
+                        html.Span("Getting shelf life estimates", className="step-text")
+                    ]
+                ),
+                html.Div(
+                    className="progress-step pending",
+                    children=[
+                        html.Span("○", className="step-icon"),
+                        html.Span("Saving to database", className="step-text")
+                    ]
+                )
+            ]
+        )
+        
+        # Process receipt with Gemini (this does the actual work)
         fridge_items = process_receipt_to_fridge_items(image_data, purchase_date)
         
         if not fridge_items:
+            # No items found - show info message
+            status = html.Div(
+                className="progress-container",
+                children=[
+                    html.Div(
+                        className="progress-step completed",
+                        children=[
+                            html.Span("✓", className="step-icon"),
+                            html.Span("Image uploaded", className="step-text")
+                        ]
+                    ),
+                    html.Div(
+                        className="progress-step completed",
+                        children=[
+                            html.Span("✓", className="step-icon"),
+                            html.Span("Receipt analyzed", className="step-text")
+                        ]
+                    ),
+                    html.Div(
+                        className="progress-step warning",
+                        children=[
+                            html.Span("⚠", className="step-icon"),
+                            html.Span("No refrigerated items found", className="step-text")
+                        ]
+                    )
+                ]
+            )
             alert = html.Div(
                 className="alert alert-info",
                 children=[
-                    "No refrigerated items found in the receipt. ",
-                    "Make sure the image is clear and contains grocery items."
+                    "ℹ️ No refrigerated items found in the receipt. ",
+                    "Make sure the image is clear and contains grocery items like dairy, meat, or produce."
                 ]
             )
-            return None, current_trigger, alert
+            return status, current_trigger, alert
         
         # Add items to database
         db.add_items(fridge_items)
         
-        # Success message
-        item_names = ", ".join([item.name for item in fridge_items[:5]])
-        if len(fridge_items) > 5:
-            item_names += f" and {len(fridge_items) - 5} more"
+        # Create completed progress display with results
+        status = html.Div([
+            html.Div(
+                className="progress-container",
+                children=[
+                    html.Div(
+                        className="progress-step completed",
+                        children=[
+                            html.Span("✓", className="step-icon"),
+                            html.Span("Image uploaded", className="step-text")
+                        ]
+                    ),
+                    html.Div(
+                        className="progress-step completed",
+                        children=[
+                            html.Span("✓", className="step-icon"),
+                            html.Span(f"Found {len(fridge_items)} refrigerated items", className="step-text")
+                        ]
+                    ),
+                    html.Div(
+                        className="progress-step completed",
+                        children=[
+                            html.Span("✓", className="step-icon"),
+                            html.Span("Shelf life estimates retrieved", className="step-text")
+                        ]
+                    ),
+                    html.Div(
+                        className="progress-step completed",
+                        children=[
+                            html.Span("✓", className="step-icon"),
+                            html.Span("Items saved to database", className="step-text")
+                        ]
+                    )
+                ]
+            ),
+            # Show detailed results table
+            create_parsing_results_table(fridge_items)
+        ])
+        
+        # Success alert
+        total_cost = sum(item.cost or 0 for item in fridge_items)
+        cost_text = f" (Total: ${total_cost:.2f})" if total_cost > 0 else ""
         
         alert = html.Div(
             className="alert alert-success",
             children=[
-                f"✅ Added {len(fridge_items)} items: {item_names}"
+                f"✅ Successfully added {len(fridge_items)} items to your fridge{cost_text}"
             ]
         )
         
-        return None, current_trigger + 1, alert
+        return status, current_trigger + 1, alert
         
     except Exception as e:
+        # Error state
+        status = html.Div(
+            className="progress-container",
+            children=[
+                html.Div(
+                    className="progress-step completed",
+                    children=[
+                        html.Span("✓", className="step-icon"),
+                        html.Span("Image uploaded", className="step-text")
+                    ]
+                ),
+                html.Div(
+                    className="progress-step error",
+                    children=[
+                        html.Span("✗", className="step-icon"),
+                        html.Span("Processing failed", className="step-text")
+                    ]
+                )
+            ]
+        )
         alert = html.Div(
             className="alert alert-error",
             children=[f"❌ Error processing receipt: {str(e)}"]
         )
-        return None, current_trigger, alert
+        return status, current_trigger, alert
 
 
 @callback(
