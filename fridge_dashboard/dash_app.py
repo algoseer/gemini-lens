@@ -40,7 +40,7 @@ def get_status_class(freshness_pct: float) -> str:
 
 
 def create_item_card(item: FridgeItem) -> html.Div:
-    """Create a card component for a fridge item."""
+    """Create a card component for a fridge item with editable name and shelf life."""
     status_class = get_status_class(item.freshness_percentage)
     
     return html.Div(
@@ -53,12 +53,19 @@ def create_item_card(item: FridgeItem) -> html.Div:
                 id={"type": "delete-btn", "index": item.id},
                 n_clicks=0
             ),
-            # Item name with emoji
+            # Item name with emoji - editable
             html.Div(
-                className="item-name",
+                className="item-name-container",
                 children=[
-                    html.Span(item.status_emoji),
-                    html.Span(item.name)
+                    html.Span(item.status_emoji, className="item-emoji"),
+                    dcc.Input(
+                        id={"type": "item-name-input", "index": item.id},
+                        type="text",
+                        value=item.name,
+                        className="item-name-input",
+                        debounce=True,
+                        placeholder="Item name"
+                    )
                 ]
             ),
             # Category
@@ -66,7 +73,7 @@ def create_item_card(item: FridgeItem) -> html.Div:
                 className="item-category",
                 children=item.category or "Other"
             ),
-            # Dates
+            # Dates with editable shelf life
             html.Div(
                 className="item-dates",
                 children=[
@@ -74,10 +81,22 @@ def create_item_card(item: FridgeItem) -> html.Div:
                         html.Span("Bought: ", className="label"),
                         html.Span(item.purchase_date.strftime("%b %d, %Y"))
                     ]),
-                    html.Div([
-                        html.Span("Shelf life: ", className="label"),
-                        html.Span(f"~{item.shelf_life_days} days")
-                    ]),
+                    html.Div(
+                        className="shelf-life-row",
+                        children=[
+                            html.Span("Shelf life: ", className="label"),
+                            dcc.Input(
+                                id={"type": "shelf-life-input", "index": item.id},
+                                type="number",
+                                value=item.shelf_life_days,
+                                className="shelf-life-input",
+                                min=1,
+                                max=365,
+                                debounce=True
+                            ),
+                            html.Span(" days", className="days-label")
+                        ]
+                    ),
                     html.Div([
                         html.Span("Days left: ", className="label"),
                         html.Span(f"{item.days_remaining} days")
@@ -551,6 +570,67 @@ def delete_item(n_clicks, current_trigger):
     db.delete_item(item_id)
     
     return current_trigger + 1
+
+
+@callback(
+    Output("refresh-trigger", "data", allow_duplicate=True),
+    Input({"type": "item-name-input", "index": ALL}, "value"),
+    State("refresh-trigger", "data"),
+    prevent_initial_call=True
+)
+def update_item_name(names, current_trigger):
+    """Update item name when edited."""
+    if not ctx.triggered_id:
+        return dash.no_update
+    
+    # Get the item ID and new name
+    item_id = ctx.triggered_id["index"]
+    
+    # Find the new name from the triggered input
+    # The names list contains all input values, we need to find which one changed
+    items = db.get_all_items()
+    sorted_items = sorted(items, key=lambda x: x.freshness_percentage)
+    
+    # Find the index of the item in the sorted list
+    for i, item in enumerate(sorted_items):
+        if item.id == item_id:
+            new_name = names[i]
+            if new_name and new_name.strip() and new_name != item.name:
+                db.update_item(item_id, name=new_name.strip())
+                return current_trigger + 1
+            break
+    
+    return dash.no_update
+
+
+@callback(
+    Output("refresh-trigger", "data", allow_duplicate=True),
+    Input({"type": "shelf-life-input", "index": ALL}, "value"),
+    State("refresh-trigger", "data"),
+    prevent_initial_call=True
+)
+def update_shelf_life(shelf_lives, current_trigger):
+    """Update shelf life when edited."""
+    if not ctx.triggered_id:
+        return dash.no_update
+    
+    # Get the item ID
+    item_id = ctx.triggered_id["index"]
+    
+    # Find the new shelf life from the triggered input
+    items = db.get_all_items()
+    sorted_items = sorted(items, key=lambda x: x.freshness_percentage)
+    
+    # Find the index of the item in the sorted list
+    for i, item in enumerate(sorted_items):
+        if item.id == item_id:
+            new_shelf_life = shelf_lives[i]
+            if new_shelf_life and new_shelf_life > 0 and new_shelf_life != item.shelf_life_days:
+                db.update_item(item_id, shelf_life_days=int(new_shelf_life))
+                return current_trigger + 1
+            break
+    
+    return dash.no_update
 
 
 def run_server(debug: bool = False, port: int = 8050, host: str = "0.0.0.0"):

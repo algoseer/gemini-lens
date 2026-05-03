@@ -171,8 +171,52 @@ def delete_all_items() -> int:
     return deleted_count
 
 
-def update_item(item: FridgeItem) -> bool:
-    """Update an existing item."""
+def update_item(item_id: int, **kwargs) -> bool:
+    """Update specific fields of an existing item.
+    
+    Args:
+        item_id: The ID of the item to update
+        **kwargs: Fields to update (name, shelf_life_days, cost, category, purchase_date)
+    
+    Returns:
+        True if item was updated, False otherwise
+    """
+    if not kwargs:
+        return False
+    
+    # Build the SET clause dynamically based on provided kwargs
+    valid_fields = {'name', 'shelf_life_days', 'cost', 'category', 'purchase_date'}
+    updates = []
+    values = []
+    
+    for field, value in kwargs.items():
+        if field in valid_fields:
+            updates.append(f"{field} = ?")
+            # Convert date to ISO format if needed
+            if field == 'purchase_date' and hasattr(value, 'isoformat'):
+                value = value.isoformat()
+            values.append(value)
+    
+    if not updates:
+        return False
+    
+    values.append(item_id)
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    query = f"UPDATE fridge_items SET {', '.join(updates)} WHERE id = ?"
+    cursor.execute(query, values)
+    
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    
+    return updated
+
+
+def update_item_full(item: FridgeItem) -> bool:
+    """Update all fields of an existing item using a FridgeItem object."""
     if item.id is None:
         return False
     

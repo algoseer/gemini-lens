@@ -149,6 +149,88 @@ body {
     gap: 8px;
 }
 
+/* Editable Item Name Container */
+.item-name-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.item-emoji {
+    font-size: 1.3rem;
+}
+
+.item-name-input {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #333;
+    border: none;
+    background: transparent;
+    padding: 4px 8px;
+    border-radius: 6px;
+    width: 100%;
+    max-width: 200px;
+    transition: all 0.2s ease;
+}
+
+.item-name-input:hover {
+    background: #f0f2ff;
+}
+
+.item-name-input:focus {
+    outline: none;
+    background: #fff;
+    border: 2px solid #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+/* Shelf Life Row */
+.shelf-life-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.shelf-life-input {
+    width: 60px;
+    padding: 4px 8px;
+    border: none;
+    background: transparent;
+    font-size: 0.9rem;
+    color: #333;
+    border-radius: 4px;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.shelf-life-input:hover {
+    background: #f0f2ff;
+}
+
+.shelf-life-input:focus {
+    outline: none;
+    background: #fff;
+    border: 2px solid #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.days-label {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+/* Hide number input spinners */
+.shelf-life-input::-webkit-outer-spin-button,
+.shelf-life-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.shelf-life-input[type=number] {
+    -moz-appearance: textfield;
+}
+
 /* Category */
 .item-category {
     font-size: 0.85rem;
