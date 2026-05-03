@@ -10,7 +10,7 @@ services:
     ports:
       - "8050:8050"
     volumes:
-      - ./fridge.db:/app/fridge.db
+      - ./data:/app/data
     env_file:
       - .env
     restart: unless-stopped

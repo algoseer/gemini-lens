@@ -3,6 +3,7 @@
 
 # Database
 fridge.db
+data/*.db
 
 # Python
 __pycache__/

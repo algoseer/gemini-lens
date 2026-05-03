@@ -7,8 +7,10 @@ from typing import List, Optional
 
 from .models import FridgeItem
 
-# Database file path
-DB_PATH = Path(__file__).parent.parent / "fridge.db"
+# Database file path - use /app/data directory for Docker volume mount
+DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR.mkdir(exist_ok=True)
+DB_PATH = DATA_DIR / "fridge.db"
 
 
 def get_connection() -> sqlite3.Connection:
