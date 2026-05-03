@@ -1,3 +1,5 @@
-streamlit
+dash
+dash-bootstrap-components
 google-generativeai
 pillow
+python-dotenv

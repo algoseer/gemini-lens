@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  fridge-dashboard:
+    build: .
+    container_name: fridge-dashboard
+    ports:
+      - "8050:8050"
+    volumes:
+      - ./fridge.db:/app/fridge.db
+    env_file:
+      - .env
+    restart: unless-stopped

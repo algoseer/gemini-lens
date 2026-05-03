@@ -1,0 +1,289 @@
+/* Fridge Health Dashboard Styles */
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
+}
+
+/* Header */
+.dashboard-header {
+    text-align: center;
+    color: white;
+    margin-bottom: 30px;
+}
+
+.dashboard-header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+}
+
+.dashboard-header p {
+    font-size: 1.1rem;
+    opacity: 0.9;
+}
+
+/* Upload Section */
+.upload-section {
+    background: white;
+    border-radius: 15px;
+    padding: 25px;
+    margin-bottom: 25px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.upload-section h3 {
+    margin-top: 0;
+    color: #333;
+}
+
+.dash-upload {
+    border-color: #667eea !important;
+    background: #f8f9ff;
+    transition: all 0.3s ease;
+}
+
+.dash-upload:hover {
+    border-color: #764ba2 !important;
+    background: #f0f2ff;
+}
+
+/* Stats Container */
+.stats-container {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px 30px;
+    text-align: center;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    min-width: 120px;
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 5px;
+}
+
+.stat-card.total .stat-number { color: #667eea; }
+.stat-card.fresh .stat-number { color: #28a745; }
+.stat-card.warning .stat-number { color: #ffc107; }
+.stat-card.danger .stat-number { color: #dc3545; }
+
+/* Items Grid */
+.items-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Item Card */
+.item-card {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    position: relative;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.item-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+}
+
+.item-card.fresh { border-left: 5px solid #28a745; }
+.item-card.warning { border-left: 5px solid #ffc107; }
+.item-card.danger { border-left: 5px solid #dc3545; }
+
+/* Delete Button */
+.delete-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #f8f9fa;
+    border: none;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    font-size: 18px;
+    color: #999;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    line-height: 1;
+}
+
+.delete-btn:hover {
+    background: #dc3545;
+    color: white;
+}
+
+/* Item Name */
+.item-name {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Category */
+.item-category {
+    font-size: 0.85rem;
+    color: #888;
+    text-transform: capitalize;
+    margin-bottom: 15px;
+}
+
+/* Dates */
+.item-dates {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 15px;
+}
+
+.item-dates > div {
+    margin-bottom: 4px;
+}
+
+.item-dates .label {
+    color: #999;
+}
+
+/* Freshness Bar */
+.freshness-bar {
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.freshness-bar .fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+.freshness-bar .fill.fresh { background: linear-gradient(90deg, #28a745, #34ce57); }
+.freshness-bar .fill.warning { background: linear-gradient(90deg, #ffc107, #ffda6a); }
+.freshness-bar .fill.danger { background: linear-gradient(90deg, #dc3545, #f1aeb5); }
+
+/* Freshness Text */
+.freshness-text {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.freshness-text.fresh { color: #28a745; }
+.freshness-text.warning { color: #b8860b; }
+.freshness-text.danger { color: #dc3545; }
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    background: white;
+    border-radius: 15px;
+    max-width: 500px;
+    margin: 0 auto;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+}
+
+.empty-state .emoji {
+    font-size: 4rem;
+    margin-bottom: 20px;
+}
+
+.empty-state h3 {
+    color: #333;
+    margin-bottom: 15px;
+}
+
+.empty-state p {
+    color: #666;
+    line-height: 1.6;
+}
+
+/* Alerts */
+.alert {
+    padding: 15px 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.alert-success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.alert-error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.alert-info {
+    background: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+/* Loading */
+.loading {
+    text-align: center;
+    color: #667eea;
+    font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .dashboard-header h1 {
+        font-size: 1.8rem;
+    }
+    
+    .stats-container {
+        gap: 10px;
+    }
+    
+    .stat-card {
+        padding: 15px 20px;
+        min-width: 100px;
+    }
+    
+    .stat-number {
+        font-size: 1.5rem;
+    }
+    
+    .items-grid {
+        grid-template-columns: 1fr;
+    }
+}
