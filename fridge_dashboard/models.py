@@ -5,9 +5,25 @@ from datetime import date, datetime
 from typing import Optional
 
 
+# Storage location constants
+STORAGE_FRIDGE = "fridge"
+STORAGE_PANTRY = "pantry"
+STORAGE_FREEZER = "freezer"
+STORAGE_COUNTER = "counter"
+
+STORAGE_LOCATIONS = [STORAGE_FRIDGE, STORAGE_PANTRY, STORAGE_FREEZER, STORAGE_COUNTER]
+
+STORAGE_DISPLAY_NAMES = {
+    STORAGE_FRIDGE: "🧊 Fridge",
+    STORAGE_PANTRY: "🗄️ Pantry",
+    STORAGE_FREEZER: "❄️ Freezer",
+    STORAGE_COUNTER: "🍎 Counter",
+}
+
+
 @dataclass
 class FridgeItem:
-    """Represents an item stored in the fridge."""
+    """Represents a food item stored in any location (fridge, pantry, counter, etc.)."""
     
     id: Optional[int]
     name: str
@@ -16,6 +32,7 @@ class FridgeItem:
     cost: Optional[float] = None
     category: Optional[str] = None
     remaining_percentage: int = 100  # How much of the item is left (0-100%)
+    storage_location: str = STORAGE_FRIDGE  # Where the item is stored
     
     @property
     def days_elapsed(self) -> int:
@@ -68,6 +85,11 @@ class FridgeItem:
         else:
             return "Expired/Bad"
     
+    @property
+    def storage_display(self) -> str:
+        """Get display name for storage location."""
+        return STORAGE_DISPLAY_NAMES.get(self.storage_location, "🧊 Fridge")
+    
     def to_dict(self) -> dict:
         """Convert to dictionary."""
         return {
@@ -77,12 +99,14 @@ class FridgeItem:
             "shelf_life_days": self.shelf_life_days,
             "cost": self.cost,
             "category": self.category,
+            "storage_location": self.storage_location,
             "days_elapsed": self.days_elapsed,
             "days_remaining": self.days_remaining,
             "freshness_percentage": round(self.freshness_percentage, 1),
             "status_color": self.status_color,
             "status_emoji": self.status_emoji,
             "status_text": self.status_text,
+            "storage_display": self.storage_display,
         }
     
     @classmethod
@@ -101,4 +125,5 @@ class FridgeItem:
             shelf_life_days=data["shelf_life_days"],
             cost=data.get("cost"),
             category=data.get("category"),
+            storage_location=data.get("storage_location", STORAGE_FRIDGE),
         )

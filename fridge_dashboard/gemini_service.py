@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-from .models import FridgeItem
+from .models import FridgeItem, STORAGE_FRIDGE, STORAGE_PANTRY, STORAGE_FREEZER, STORAGE_COUNTER
 
 # Load .env file from project root
 env_path = Path(__file__).parent.parent / ".env"
@@ -36,25 +36,32 @@ MODEL_ID = "gemini-2.5-flash"
 RECEIPT_PARSING_PROMPT = """
 Analyze this grocery receipt image and extract:
 1. The purchase date from the receipt (look for date printed on receipt)
-2. All food items that would typically be stored in a refrigerator
+2. All FOOD items from the receipt
 
 For each item, provide:
 1. "item": The normalized name of the grocery item in standard English (fix any OCR errors)
 2. "cost": The price as a number (or null if not visible)
-3. "category": One of: dairy, meat, produce, beverages, condiments, leftovers, other
+3. "category": One of: dairy, meat, produce, beverages, condiments, grains, canned, snacks, frozen, bakery, other
+4. "storage": Where the item should be stored. One of:
+   - "fridge": Items that need refrigeration (dairy, fresh meat, eggs, fresh produce that needs cold)
+   - "freezer": Frozen items (frozen vegetables, ice cream, frozen meals)
+   - "pantry": Shelf-stable items (canned goods, dry pasta, rice, cereals, snacks, chips)
+   - "counter": Fresh produce that stores at room temperature (bananas, potatoes, onions, tomatoes, avocados)
 
-IMPORTANT: Only include items that are typically refrigerated. Skip items like:
-- Canned goods, dry pasta, rice, cereals
+IMPORTANT: Include ALL food items. Skip only non-food items like:
 - Cleaning supplies, paper products
-- Snacks like chips, crackers, cookies
+- Personal care items
 
 Output ONLY valid JSON in this exact format, no other text:
 {
     "purchase_date": "2024-01-15",
     "items": [
-        {"item": "Milk", "cost": 4.99, "category": "dairy"},
-        {"item": "Chicken Breast", "cost": 8.50, "category": "meat"},
-        {"item": "Lettuce", "cost": 2.99, "category": "produce"}
+        {"item": "Milk", "cost": 4.99, "category": "dairy", "storage": "fridge"},
+        {"item": "Chicken Breast", "cost": 8.50, "category": "meat", "storage": "fridge"},
+        {"item": "Lettuce", "cost": 2.99, "category": "produce", "storage": "fridge"},
+        {"item": "Bananas", "cost": 1.49, "category": "produce", "storage": "counter"},
+        {"item": "Pasta", "cost": 2.29, "category": "grains", "storage": "pantry"},
+        {"item": "Frozen Peas", "cost": 3.49, "category": "frozen", "storage": "freezer"}
     ]
 }
 
@@ -63,22 +70,25 @@ Note: For purchase_date, use ISO format (YYYY-MM-DD). If the date is not visible
 
 
 SHELF_LIFE_PROMPT = """
-For the following list of refrigerated food items, provide the typical shelf life in days when stored in a refrigerator at standard temperature (35-40°F / 2-4°C).
+For the following list of food items with their storage locations, provide the typical shelf life in days.
 
 Items: {items}
 
-Consider:
-- Fresh produce typically lasts 3-7 days
-- Dairy products vary (milk ~7 days, hard cheese ~21 days)
-- Raw meat typically lasts 2-5 days
-- Cooked leftovers typically last 3-4 days
+Consider storage location when determining shelf life:
+- Fridge items: Fresh produce 3-7 days, dairy varies (milk ~7 days, hard cheese ~21 days), raw meat 2-5 days
+- Freezer items: Most items last 30-180 days when properly frozen
+- Pantry items: Dry goods last 180-365 days, canned goods 365+ days
+- Counter items: Bananas ~5 days, potatoes ~14 days, onions ~30 days, tomatoes ~7 days
 
 Output ONLY valid JSON in this exact format, no other text:
 {{
     "shelf_life": {{
         "Milk": 7,
         "Chicken Breast": 2,
-        "Lettuce": 5
+        "Lettuce": 5,
+        "Bananas": 5,
+        "Pasta": 365,
+        "Frozen Peas": 180
     }}
 }}
 """
@@ -272,13 +282,24 @@ def process_receipt_to_fridge_items(
         name = item["item"]
         shelf_life = shelf_life_map.get(name, 7)  # Default to 7 days
         
+        # Map storage value from API to our constants
+        storage_value = item.get("storage", "fridge").lower()
+        storage_map = {
+            "fridge": STORAGE_FRIDGE,
+            "freezer": STORAGE_FREEZER,
+            "pantry": STORAGE_PANTRY,
+            "counter": STORAGE_COUNTER,
+        }
+        storage_location = storage_map.get(storage_value, STORAGE_FRIDGE)
+        
         fridge_item = FridgeItem(
             id=None,
             name=name,
             purchase_date=purchase_date,
             shelf_life_days=shelf_life,
             cost=item.get("cost"),
-            category=item.get("category")
+            category=item.get("category"),
+            storage_location=storage_location
         )
         fridge_items.append(fridge_item)
     

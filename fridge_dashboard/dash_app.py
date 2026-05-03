@@ -11,7 +11,7 @@ from dash import dcc, html, Input, Output, State, callback, ALL, ctx
 import dash_bootstrap_components as dbc
 
 from . import database as db
-from .models import FridgeItem
+from .models import FridgeItem, STORAGE_LOCATIONS, STORAGE_DISPLAY_NAMES
 from .gemini_service import process_receipt_to_fridge_items
 
 # Check if debug mode is enabled via environment variable
@@ -22,7 +22,7 @@ app = dash.Dash(
     __name__,
     external_stylesheets=[dbc.themes.BOOTSTRAP],
     suppress_callback_exceptions=True,
-    title="🧊 Fridge Health Dashboard"
+    title="🍎 Food Freshness Tracker"
 )
 
 # Make server accessible for running
@@ -40,7 +40,7 @@ def get_status_class(freshness_pct: float) -> str:
 
 
 def create_item_card(item: FridgeItem) -> html.Div:
-    """Create a card component for a fridge item with editable name and shelf life."""
+    """Create a card component for a food item with editable name and shelf life."""
     status_class = get_status_class(item.freshness_percentage)
     
     return html.Div(
@@ -67,6 +67,11 @@ def create_item_card(item: FridgeItem) -> html.Div:
                         placeholder="Item name"
                     )
                 ]
+            ),
+            # Storage location badge
+            html.Div(
+                className="item-storage-badge",
+                children=item.storage_display
             ),
             # Category
             html.Div(
@@ -211,12 +216,12 @@ def create_empty_state() -> html.Div:
     return html.Div(
         className="empty-state",
         children=[
-            html.Div("🧊", className="emoji"),
-            html.H3("Your fridge is empty!"),
+            html.Div("🍎", className="emoji"),
+            html.H3("No food items yet!"),
             html.P(
                 "Upload a grocery receipt to start tracking your food items. "
-                "We'll analyze the receipt, identify refrigerated items, and "
-                "help you track their freshness."
+                "We'll analyze the receipt, identify all food items, determine "
+                "where they should be stored, and help you track their freshness."
             )
         ]
     )
@@ -242,8 +247,8 @@ app.layout = html.Div([
     html.Div(
         className="dashboard-header",
         children=[
-            html.H1("🧊 Fridge Health Dashboard"),
-            html.P("Track the freshness of your refrigerated items")
+            html.H1("🍎 Food Freshness Tracker"),
+            html.P("Track the freshness of all your groceries - fridge, freezer, pantry & counter")
         ]
     ),
     
@@ -253,7 +258,7 @@ app.layout = html.Div([
         children=[
             html.H3("📷 Upload Receipt"),
             html.P(
-                "Upload a photo of your grocery receipt to add items to your fridge.",
+                "Upload a photo of your grocery receipt to add food items. We'll automatically determine where each item should be stored.",
                 style={"color": "#666", "marginBottom": "15px"}
             ),
             dcc.Upload(
@@ -483,7 +488,7 @@ def process_receipt(contents, filename, purchase_date_str, current_trigger):
                             className="progress-step warning",
                             children=[
                                 html.Span("⚠", className="step-icon"),
-                                html.Span("No refrigerated items found", className="step-text")
+                                html.Span("No food items found", className="step-text")
                             ]
                         )
                     ]
@@ -494,8 +499,8 @@ def process_receipt(contents, filename, purchase_date_str, current_trigger):
             alert = html.Div(
                 className="alert alert-info",
                 children=[
-                    "ℹ️ No refrigerated items found in the receipt. ",
-                    "Make sure the image is clear and contains grocery items like dairy, meat, or produce."
+                    "ℹ️ No food items found in the receipt. ",
+                    "Make sure the image is clear and contains grocery items."
                 ]
             )
             return status, current_trigger, alert
@@ -519,7 +524,7 @@ def process_receipt(contents, filename, purchase_date_str, current_trigger):
                         className="progress-step completed",
                         children=[
                             html.Span("✓", className="step-icon"),
-                            html.Span(f"Found {len(fridge_items)} refrigerated items", className="step-text")
+                            html.Span(f"Found {len(fridge_items)} food items", className="step-text")
                         ]
                     ),
                     html.Div(

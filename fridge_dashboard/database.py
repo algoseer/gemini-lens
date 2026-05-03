@@ -34,6 +34,7 @@ def init_database():
             cost REAL,
             category TEXT,
             remaining_percentage INTEGER DEFAULT 100,
+            storage_location TEXT DEFAULT 'fridge',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -44,24 +45,31 @@ def init_database():
     except sqlite3.OperationalError:
         pass  # Column already exists
     
+    # Add storage_location column if it doesn't exist (migration)
+    try:
+        cursor.execute("ALTER TABLE fridge_items ADD COLUMN storage_location TEXT DEFAULT 'fridge'")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
     conn.commit()
     conn.close()
 
 
 def add_item(item: FridgeItem) -> int:
-    """Add a new item to the fridge database."""
+    """Add a new item to the database."""
     conn = get_connection()
     cursor = conn.cursor()
     
     cursor.execute("""
-        INSERT INTO fridge_items (name, purchase_date, shelf_life_days, cost, category)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO fridge_items (name, purchase_date, shelf_life_days, cost, category, storage_location)
+        VALUES (?, ?, ?, ?, ?, ?)
     """, (
         item.name,
         item.purchase_date.isoformat(),
         item.shelf_life_days,
         item.cost,
-        item.category
+        item.category,
+        item.storage_location
     ))
     
     item_id = cursor.lastrowid
@@ -72,21 +80,22 @@ def add_item(item: FridgeItem) -> int:
 
 
 def add_items(items: List[FridgeItem]) -> List[int]:
-    """Add multiple items to the fridge database."""
+    """Add multiple items to the database."""
     conn = get_connection()
     cursor = conn.cursor()
     
     item_ids = []
     for item in items:
         cursor.execute("""
-            INSERT INTO fridge_items (name, purchase_date, shelf_life_days, cost, category)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO fridge_items (name, purchase_date, shelf_life_days, cost, category, storage_location)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             item.name,
             item.purchase_date.isoformat(),
             item.shelf_life_days,
             item.cost,
-            item.category
+            item.category,
+            item.storage_location
         ))
         item_ids.append(cursor.lastrowid)
     
@@ -96,16 +105,24 @@ def add_items(items: List[FridgeItem]) -> List[int]:
     return item_ids
 
 
-def get_all_items() -> List[FridgeItem]:
-    """Get all items from the fridge database."""
+def get_all_items(storage_location: Optional[str] = None) -> List[FridgeItem]:
+    """Get all items from the database, optionally filtered by storage location."""
     conn = get_connection()
     cursor = conn.cursor()
     
-    cursor.execute("""
-        SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage
-        FROM fridge_items
-        ORDER BY purchase_date DESC
-    """)
+    if storage_location:
+        cursor.execute("""
+            SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage, storage_location
+            FROM fridge_items
+            WHERE storage_location = ?
+            ORDER BY purchase_date DESC
+        """, (storage_location,))
+    else:
+        cursor.execute("""
+            SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage, storage_location
+            FROM fridge_items
+            ORDER BY purchase_date DESC
+        """)
     
     rows = cursor.fetchall()
     conn.close()
@@ -119,7 +136,8 @@ def get_all_items() -> List[FridgeItem]:
             shelf_life_days=row["shelf_life_days"],
             cost=row["cost"],
             category=row["category"],
-            remaining_percentage=row["remaining_percentage"] or 100
+            remaining_percentage=row["remaining_percentage"] or 100,
+            storage_location=row["storage_location"] or "fridge"
         ))
     
     return items
@@ -131,7 +149,7 @@ def get_item_by_id(item_id: int) -> Optional[FridgeItem]:
     cursor = conn.cursor()
     
     cursor.execute("""
-        SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage
+        SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage, storage_location
         FROM fridge_items
         WHERE id = ?
     """, (item_id,))
@@ -147,7 +165,8 @@ def get_item_by_id(item_id: int) -> Optional[FridgeItem]:
             shelf_life_days=row["shelf_life_days"],
             cost=row["cost"],
             category=row["category"],
-            remaining_percentage=row["remaining_percentage"] or 100
+            remaining_percentage=row["remaining_percentage"] or 100,
+            storage_location=row["storage_location"] or "fridge"
         )
     return None
 
@@ -185,7 +204,7 @@ def update_item(item_id: int, **kwargs) -> bool:
     
     Args:
         item_id: The ID of the item to update
-        **kwargs: Fields to update (name, shelf_life_days, cost, category, purchase_date)
+        **kwargs: Fields to update (name, shelf_life_days, cost, category, purchase_date, storage_location)
     
     Returns:
         True if item was updated, False otherwise
@@ -194,7 +213,7 @@ def update_item(item_id: int, **kwargs) -> bool:
         return False
     
     # Build the SET clause dynamically based on provided kwargs
-    valid_fields = {'name', 'shelf_life_days', 'cost', 'category', 'purchase_date', 'remaining_percentage'}
+    valid_fields = {'name', 'shelf_life_days', 'cost', 'category', 'purchase_date', 'remaining_percentage', 'storage_location'}
     updates = []
     values = []
     
@@ -234,7 +253,7 @@ def update_item_full(item: FridgeItem) -> bool:
     
     cursor.execute("""
         UPDATE fridge_items
-        SET name = ?, purchase_date = ?, shelf_life_days = ?, cost = ?, category = ?
+        SET name = ?, purchase_date = ?, shelf_life_days = ?, cost = ?, category = ?, storage_location = ?
         WHERE id = ?
     """, (
         item.name,
@@ -242,6 +261,7 @@ def update_item_full(item: FridgeItem) -> bool:
         item.shelf_life_days,
         item.cost,
         item.category,
+        item.storage_location,
         item.id
     ))
     

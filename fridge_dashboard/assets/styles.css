@@ -320,6 +320,19 @@ body {
     display: none;
 }
 
+/* Storage Location Badge */
+.item-storage-badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 12px;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    color: #1565c0;
+    border: 1px solid #90caf9;
+}
+
 /* Category */
 .item-category {
     font-size: 0.85rem;
