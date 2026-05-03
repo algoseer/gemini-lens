@@ -227,8 +227,22 @@ app.layout = html.Div([
                     )
                 ]
             ),
-            # Processing status
-            html.Div(id="upload-status", style={"marginTop": "15px"})
+            # Processing status with loading spinner
+            dcc.Loading(
+                id="upload-loading",
+                type="default",
+                color="#667eea",
+                children=[
+                    html.Div(id="upload-status", style={"marginTop": "15px"})
+                ],
+                fullscreen=False,
+                style={"marginTop": "20px"},
+                custom_spinner=html.Div([
+                    html.Div(className="upload-spinner"),
+                    html.Div("🔍 Analyzing receipt with Gemini AI...", 
+                             className="upload-spinner-text")
+                ])
+            )
         ]
     ),
     
@@ -332,49 +346,23 @@ def process_receipt(contents, filename, purchase_date_str, current_trigger):
         content_type, content_string = contents.split(",")
         image_data = base64.b64decode(content_string)
         
-        # Parse purchase date
+        # Parse fallback purchase date from date picker
         if purchase_date_str:
-            purchase_date = datetime.fromisoformat(purchase_date_str).date()
+            fallback_date = datetime.fromisoformat(purchase_date_str).date()
         else:
-            purchase_date = date.today()
-        
-        # Create progress display
-        progress_steps = html.Div(
-            className="progress-container",
-            children=[
-                html.Div(
-                    className="progress-step completed",
-                    children=[
-                        html.Span("✓", className="step-icon"),
-                        html.Span("Image uploaded", className="step-text")
-                    ]
-                ),
-                html.Div(
-                    className="progress-step active",
-                    children=[
-                        html.Span("⟳", className="step-icon spinning"),
-                        html.Span("Analyzing receipt with Gemini AI...", className="step-text")
-                    ]
-                ),
-                html.Div(
-                    className="progress-step pending",
-                    children=[
-                        html.Span("○", className="step-icon"),
-                        html.Span("Getting shelf life estimates", className="step-text")
-                    ]
-                ),
-                html.Div(
-                    className="progress-step pending",
-                    children=[
-                        html.Span("○", className="step-icon"),
-                        html.Span("Saving to database", className="step-text")
-                    ]
-                )
-            ]
-        )
+            fallback_date = date.today()
         
         # Process receipt with Gemini (this does the actual work)
-        fridge_items = process_receipt_to_fridge_items(image_data, purchase_date)
+        # Now returns tuple of (items, extracted_date)
+        fridge_items, extracted_date = process_receipt_to_fridge_items(image_data, fallback_date)
+        
+        # Determine which date was used
+        if extracted_date:
+            date_source = f"📅 Date extracted from receipt: {extracted_date.strftime('%b %d, %Y')}"
+            date_class = "date-extracted"
+        else:
+            date_source = f"📅 Using selected date: {fallback_date.strftime('%b %d, %Y')}"
+            date_class = "date-fallback"
         
         if not fridge_items:
             # No items found - show info message
@@ -451,18 +439,24 @@ def process_receipt(contents, filename, purchase_date_str, current_trigger):
                     )
                 ]
             ),
+            # Show extracted date info
+            html.Div(
+                className=f"date-info {date_class}",
+                children=[date_source]
+            ),
             # Show detailed results table
             create_parsing_results_table(fridge_items)
         ])
         
-        # Success alert
+        # Success alert with date info
         total_cost = sum(item.cost or 0 for item in fridge_items)
         cost_text = f" (Total: ${total_cost:.2f})" if total_cost > 0 else ""
+        date_info = f" • Date: {fridge_items[0].purchase_date.strftime('%b %d, %Y')}" if fridge_items else ""
         
         alert = html.Div(
             className="alert alert-success",
             children=[
-                f"✅ Successfully added {len(fridge_items)} items to your fridge{cost_text}"
+                f"✅ Successfully added {len(fridge_items)} items to your fridge{cost_text}{date_info}"
             ]
         )
         

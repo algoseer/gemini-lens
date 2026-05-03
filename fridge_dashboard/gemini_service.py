@@ -7,9 +7,10 @@ google-generativeai package.
 import base64
 import json
 import os
-from datetime import date
+import re
+from datetime import date, datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from PIL import Image
 import io
 
@@ -33,7 +34,9 @@ MODEL_ID = "gemini-2.5-flash"
 
 
 RECEIPT_PARSING_PROMPT = """
-Analyze this grocery receipt image and extract all food items that would typically be stored in a refrigerator.
+Analyze this grocery receipt image and extract:
+1. The purchase date from the receipt (look for date printed on receipt)
+2. All food items that would typically be stored in a refrigerator
 
 For each item, provide:
 1. "item": The normalized name of the grocery item in standard English (fix any OCR errors)
@@ -47,12 +50,15 @@ IMPORTANT: Only include items that are typically refrigerated. Skip items like:
 
 Output ONLY valid JSON in this exact format, no other text:
 {
+    "purchase_date": "2024-01-15",
     "items": [
         {"item": "Milk", "cost": 4.99, "category": "dairy"},
         {"item": "Chicken Breast", "cost": 8.50, "category": "meat"},
         {"item": "Lettuce", "cost": 2.99, "category": "produce"}
     ]
 }
+
+Note: For purchase_date, use ISO format (YYYY-MM-DD). If the date is not visible or unclear, use null.
 """
 
 
@@ -94,19 +100,19 @@ def _get_image_mime_type(image_data: bytes) -> str:
         return 'image/jpeg'
 
 
-def parse_receipt_image(image_data: bytes) -> List[Dict[str, Any]]:
+def parse_receipt_image(image_data: bytes) -> Tuple[List[Dict[str, Any]], Optional[date]]:
     """
-    Parse a receipt image and extract refrigerated food items.
+    Parse a receipt image and extract refrigerated food items and purchase date.
     
     Args:
         image_data: Raw image bytes
         
     Returns:
-        List of dictionaries with item, cost, and category
+        Tuple of (list of item dictionaries, extracted purchase date or None)
     """
     if client is None:
         print("Error: Gemini client not initialized. Set GOOGLE_API_KEY environment variable.")
-        return []
+        return [], None
     
     try:
         # Detect MIME type
@@ -131,15 +137,26 @@ def parse_receipt_image(image_data: bytes) -> List[Dict[str, Any]]:
             response_text = "\n".join(lines[1:-1])
         
         result = json.loads(response_text)
-        return result.get("items", [])
+        items = result.get("items", [])
+        
+        # Extract purchase date if available
+        extracted_date = None
+        date_str = result.get("purchase_date")
+        if date_str:
+            try:
+                extracted_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                print(f"Could not parse date: {date_str}")
+        
+        return items, extracted_date
         
     except json.JSONDecodeError as e:
         print(f"Error parsing Gemini response as JSON: {e}")
         print(f"Response was: {response.text if 'response' in dir() else 'N/A'}")
-        return []
+        return [], None
     except Exception as e:
         print(f"Error processing receipt: {e}")
-        return []
+        return [], None
 
 
 def get_shelf_life_for_items(item_names: List[str]) -> Dict[str, int]:
@@ -195,31 +212,34 @@ def get_shelf_life_for_items(item_names: List[str]) -> Dict[str, int]:
 
 def process_receipt_to_fridge_items(
     image_data: bytes,
-    purchase_date: Optional[date] = None
-) -> List[FridgeItem]:
+    fallback_date: Optional[date] = None
+) -> Tuple[List[FridgeItem], Optional[date]]:
     """
     Process a receipt image and create FridgeItem objects.
     
     This is the main function that:
-    1. Parses the receipt to extract items
+    1. Parses the receipt to extract items and purchase date
     2. Gets shelf life for each item
     3. Creates FridgeItem objects
     
     Args:
         image_data: Raw image bytes of the receipt
-        purchase_date: Date of purchase (defaults to today)
+        fallback_date: Date to use if not found on receipt (defaults to today)
         
     Returns:
-        List of FridgeItem objects ready to be stored
+        Tuple of (List of FridgeItem objects, extracted purchase date or None)
     """
-    if purchase_date is None:
-        purchase_date = date.today()
+    if fallback_date is None:
+        fallback_date = date.today()
     
-    # Step 1: Parse receipt
-    parsed_items = parse_receipt_image(image_data)
+    # Step 1: Parse receipt (now returns items and extracted date)
+    parsed_items, extracted_date = parse_receipt_image(image_data)
+    
+    # Use extracted date if available, otherwise use fallback
+    purchase_date = extracted_date if extracted_date else fallback_date
     
     if not parsed_items:
-        return []
+        return [], extracted_date
     
     # Step 2: Get shelf life for all items
     item_names = [item["item"] for item in parsed_items]
@@ -241,7 +261,7 @@ def process_receipt_to_fridge_items(
         )
         fridge_items.append(fridge_item)
     
-    return fridge_items
+    return fridge_items, extracted_date
 
 
 # Default shelf life values for common items (fallback)
