@@ -1,4 +1,8 @@
-"""Gemini API service for receipt parsing and shelf life lookup."""
+"""Gemini API service for receipt parsing and shelf life lookup.
+
+Uses the new google-genai SDK (google.genai) instead of the deprecated
+google-generativeai package.
+"""
 
 import base64
 import json
@@ -10,7 +14,8 @@ from PIL import Image
 import io
 
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from .models import FridgeItem
 
@@ -18,13 +23,13 @@ from .models import FridgeItem
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(env_path)
 
-# Configure Gemini API
+# Create Gemini client - it will auto-detect GOOGLE_API_KEY from environment
+# or you can explicitly pass api_key parameter
 api_key = os.environ.get("GOOGLE_API_KEY")
-if api_key:
-    genai.configure(api_key=api_key)
+client = genai.Client(api_key=api_key) if api_key else None
 
-# Use Gemini 1.5 Flash for fast responses
-model = genai.GenerativeModel("gemini-1.5-flash")
+# Use Gemini 2.5 Flash for fast responses
+MODEL_ID = "gemini-2.5-flash"
 
 
 RECEIPT_PARSING_PROMPT = """
@@ -73,6 +78,22 @@ Output ONLY valid JSON in this exact format, no other text:
 """
 
 
+def _get_image_mime_type(image_data: bytes) -> str:
+    """Detect image MIME type from bytes."""
+    # Check magic bytes for common image formats
+    if image_data[:8] == b'\x89PNG\r\n\x1a\n':
+        return 'image/png'
+    elif image_data[:2] == b'\xff\xd8':
+        return 'image/jpeg'
+    elif image_data[:6] in (b'GIF87a', b'GIF89a'):
+        return 'image/gif'
+    elif image_data[:4] == b'RIFF' and image_data[8:12] == b'WEBP':
+        return 'image/webp'
+    else:
+        # Default to JPEG
+        return 'image/jpeg'
+
+
 def parse_receipt_image(image_data: bytes) -> List[Dict[str, Any]]:
     """
     Parse a receipt image and extract refrigerated food items.
@@ -83,15 +104,22 @@ def parse_receipt_image(image_data: bytes) -> List[Dict[str, Any]]:
     Returns:
         List of dictionaries with item, cost, and category
     """
+    if client is None:
+        print("Error: Gemini client not initialized. Set GOOGLE_API_KEY environment variable.")
+        return []
+    
     try:
-        # Open image with PIL
-        image = Image.open(io.BytesIO(image_data))
+        # Detect MIME type
+        mime_type = _get_image_mime_type(image_data)
         
-        # Call Gemini API
-        response = model.generate_content([
-            RECEIPT_PARSING_PROMPT,
-            image
-        ])
+        # Create image part using the new SDK
+        image_part = types.Part.from_bytes(data=image_data, mime_type=mime_type)
+        
+        # Call Gemini API with the new SDK
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=[RECEIPT_PARSING_PROMPT, image_part]
+        )
         
         # Parse JSON response
         response_text = response.text.strip()
@@ -99,6 +127,7 @@ def parse_receipt_image(image_data: bytes) -> List[Dict[str, Any]]:
         # Handle markdown code blocks if present
         if response_text.startswith("```"):
             lines = response_text.split("\n")
+            # Remove first line (```json or ```) and last line (```)
             response_text = "\n".join(lines[1:-1])
         
         result = json.loads(response_text)
@@ -106,7 +135,7 @@ def parse_receipt_image(image_data: bytes) -> List[Dict[str, Any]]:
         
     except json.JSONDecodeError as e:
         print(f"Error parsing Gemini response as JSON: {e}")
-        print(f"Response was: {response.text}")
+        print(f"Response was: {response.text if 'response' in dir() else 'N/A'}")
         return []
     except Exception as e:
         print(f"Error processing receipt: {e}")
@@ -126,13 +155,21 @@ def get_shelf_life_for_items(item_names: List[str]) -> Dict[str, int]:
     if not item_names:
         return {}
     
+    if client is None:
+        print("Error: Gemini client not initialized. Set GOOGLE_API_KEY environment variable.")
+        # Return default shelf life of 7 days for all items
+        return {name: 7 for name in item_names}
+    
     try:
         # Format the prompt with item names
         items_str = ", ".join(item_names)
         prompt = SHELF_LIFE_PROMPT.format(items=items_str)
         
-        # Call Gemini API
-        response = model.generate_content(prompt)
+        # Call Gemini API with the new SDK
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=prompt
+        )
         
         # Parse JSON response
         response_text = response.text.strip()
@@ -147,7 +184,7 @@ def get_shelf_life_for_items(item_names: List[str]) -> Dict[str, int]:
         
     except json.JSONDecodeError as e:
         print(f"Error parsing Gemini response as JSON: {e}")
-        print(f"Response was: {response.text}")
+        print(f"Response was: {response.text if 'response' in dir() else 'N/A'}")
         # Return default shelf life of 7 days for all items
         return {name: 7 for name in item_names}
     except Exception as e:
