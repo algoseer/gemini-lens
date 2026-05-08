@@ -717,3 +717,452 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ============================================================================
+   Tabs Styling
+   ============================================================================ */
+
+.main-tabs {
+    max-width: 1200px;
+    margin: 0 auto 25px;
+}
+
+.main-tabs .tab {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    padding: 15px 30px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-radius: 10px 10px 0 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.main-tabs .tab:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.main-tabs .tab--selected {
+    background: white;
+    color: #667eea;
+}
+
+/* ============================================================================
+   Shopping List Tab Styling
+   ============================================================================ */
+
+.shopping-tab-content {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.shopping-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+}
+
+.shopping-column {
+    background: white;
+    border-radius: 15px;
+    padding: 25px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+}
+
+.shopping-column h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.column-description {
+    color: #666;
+    font-size: 0.9rem;
+    margin-bottom: 20px;
+}
+
+/* Suggestions Panel */
+.suggestions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.suggestion-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background: #f8f9ff;
+    border-radius: 10px;
+    border: 1px solid #e0e4f0;
+    transition: all 0.2s ease;
+}
+
+.suggestion-card:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+.suggestion-info {
+    flex: 1;
+}
+
+.suggestion-name {
+    font-weight: 600;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.purchase-count {
+    font-size: 0.8rem;
+    color: #888;
+    font-weight: 400;
+}
+
+.suggestion-meta {
+    display: flex;
+    gap: 8px;
+    margin-top: 5px;
+}
+
+.storage-badge-small {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    background: #e3f2fd;
+    color: #1565c0;
+    border-radius: 8px;
+}
+
+.category-badge-small {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    background: #f3e5f5;
+    color: #7b1fa2;
+    border-radius: 8px;
+    text-transform: capitalize;
+}
+
+.suggestion-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.add-suggestion-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: #28a745;
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.add-suggestion-btn:hover {
+    background: #218838;
+    transform: scale(1.1);
+}
+
+.suppress-suggestion-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: #f8f9fa;
+    color: #999;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.suppress-suggestion-btn:hover {
+    background: #dc3545;
+    color: white;
+}
+
+/* Empty States */
+.suggestions-empty,
+.shopping-list-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+}
+
+.empty-icon {
+    font-size: 3rem;
+    margin-bottom: 15px;
+}
+
+.empty-hint {
+    font-size: 0.9rem;
+    color: #888;
+}
+
+/* Shopping List */
+.list-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.action-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.action-btn.primary {
+    background: #667eea;
+    color: white;
+}
+
+.action-btn.primary:hover {
+    background: #5a6fd6;
+}
+
+.action-btn.secondary {
+    background: #f8f9fa;
+    color: #666;
+    border: 1px solid #dee2e6;
+}
+
+.action-btn.secondary:hover {
+    background: #e9ecef;
+}
+
+.action-btn.danger {
+    background: #f8f9fa;
+    color: #dc3545;
+    border: 1px solid #f5c6cb;
+}
+
+.action-btn.danger:hover {
+    background: #dc3545;
+    color: white;
+}
+
+.shopping-list-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.shopping-list-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 15px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    transition: all 0.2s ease;
+}
+
+.shopping-list-item.checked {
+    opacity: 0.6;
+}
+
+.shopping-item-check {
+    flex-shrink: 0;
+}
+
+.check-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid #dee2e6;
+    background: white;
+    color: transparent;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.check-btn:hover {
+    border-color: #28a745;
+}
+
+.check-btn.checked {
+    background: #28a745;
+    border-color: #28a745;
+    color: white;
+}
+
+.shopping-item-info {
+    flex: 1;
+}
+
+.shopping-item-name {
+    font-weight: 500;
+    color: #333;
+}
+
+.shopping-item-name.checked {
+    text-decoration: line-through;
+    color: #888;
+}
+
+.source-badge {
+    margin-left: 5px;
+}
+
+.shopping-item-meta {
+    margin-top: 4px;
+}
+
+.remove-shopping-item-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: #ccc;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.remove-shopping-item-btn:hover {
+    background: #dc3545;
+    color: white;
+}
+
+.shopping-list-divider {
+    height: 1px;
+    background: #dee2e6;
+    margin: 10px 0;
+}
+
+.completed-header {
+    font-size: 0.85rem;
+    color: #888;
+    font-weight: 500;
+    margin-bottom: 5px;
+}
+
+/* Add Item Form */
+.add-item-form {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #e9ecef;
+}
+
+.add-item-form h4 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    color: #333;
+    font-size: 1rem;
+}
+
+.form-row {
+    display: flex;
+    gap: 10px;
+}
+
+.form-input {
+    flex: 1;
+    padding: 10px 15px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    font-size: 0.95rem;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.form-dropdown {
+    min-width: 150px;
+}
+
+/* Suppressed Panel */
+.suppressed-panel {
+    margin-top: 25px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.suppressed-panel summary {
+    padding: 12px 15px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #666;
+    user-select: none;
+}
+
+.suppressed-panel summary:hover {
+    background: #e9ecef;
+}
+
+.suppressed-list {
+    padding: 10px 15px 15px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.suppressed-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: white;
+    border-radius: 20px;
+    border: 1px solid #dee2e6;
+}
+
+.suppressed-name {
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.restore-btn {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    background: #e3f2fd;
+    color: #1565c0;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.restore-btn:hover {
+    background: #1565c0;
+    color: white;
+}
+
+/* Responsive Design for Shopping Tab */
+@media (max-width: 900px) {
+    .shopping-columns {
+        grid-template-columns: 1fr;
+    }
+    
+    .form-row {
+        flex-direction: column;
+    }
+    
+    .form-dropdown {
+        min-width: 100%;
+    }
+}

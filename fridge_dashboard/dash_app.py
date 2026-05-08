@@ -11,7 +11,7 @@ from dash import dcc, html, Input, Output, State, callback, ALL, ctx
 import dash_bootstrap_components as dbc
 
 from . import database as db
-from .models import FridgeItem, STORAGE_LOCATIONS, STORAGE_DISPLAY_NAMES
+from .models import FridgeItem, PurchaseHistoryItem, ShoppingListItem, STORAGE_LOCATIONS, STORAGE_DISPLAY_NAMES
 from .gemini_service import process_receipt_to_fridge_items
 
 # Check if debug mode is enabled via environment variable
@@ -241,7 +241,182 @@ def create_items_grid(items: List[FridgeItem]) -> html.Div:
     )
 
 
+# ============================================================================
+# Shopping List Helper Functions
+# ============================================================================
+
+def create_suggestion_card(item: PurchaseHistoryItem) -> html.Div:
+    """Create a card for a suggested item."""
+    return html.Div(
+        className="suggestion-card",
+        children=[
+            html.Div(
+                className="suggestion-info",
+                children=[
+                    html.Div(
+                        className="suggestion-name",
+                        children=[
+                            html.Span(item.display_name),
+                            html.Span(f"({item.purchase_count}x)", className="purchase-count")
+                        ]
+                    ),
+                    html.Div(
+                        className="suggestion-meta",
+                        children=[
+                            html.Span(item.storage_display, className="storage-badge-small"),
+                            html.Span(item.category or "Other", className="category-badge-small")
+                        ]
+                    )
+                ]
+            ),
+            html.Div(
+                className="suggestion-actions",
+                children=[
+                    html.Button(
+                        "+",
+                        className="add-suggestion-btn",
+                        id={"type": "add-suggestion-btn", "name": item.display_name, 
+                            "category": item.category or "", "storage": item.storage_location},
+                        n_clicks=0,
+                        title="Add to shopping list"
+                    ),
+                    html.Button(
+                        "×",
+                        className="suppress-suggestion-btn",
+                        id={"type": "suppress-suggestion-btn", "name": item.normalized_name},
+                        n_clicks=0,
+                        title="Don't suggest this item"
+                    )
+                ]
+            )
+        ]
+    )
+
+
 # App Layout
+def create_shopping_list_item(item: ShoppingListItem) -> html.Div:
+    """Create a row for a shopping list item."""
+    checked_class = "checked" if item.is_checked else ""
+    source_badge = "💡" if item.source == "suggested" else ""
+    
+    return html.Div(
+        className=f"shopping-list-item {checked_class}",
+        children=[
+            html.Div(
+                className="shopping-item-check",
+                children=[
+                    html.Button(
+                        "✓" if item.is_checked else "",
+                        className=f"check-btn {checked_class}",
+                        id={"type": "toggle-shopping-item", "index": item.id},
+                        n_clicks=0
+                    )
+                ]
+            ),
+            html.Div(
+                className="shopping-item-info",
+                children=[
+                    html.Span(item.name, className=f"shopping-item-name {checked_class}"),
+                    html.Span(source_badge, className="source-badge"),
+                    html.Div(
+                        className="shopping-item-meta",
+                        children=[
+                            html.Span(item.storage_display, className="storage-badge-small"),
+                        ]
+                    )
+                ]
+            ),
+            html.Button(
+                "×",
+                className="remove-shopping-item-btn",
+                id={"type": "remove-shopping-item", "index": item.id},
+                n_clicks=0,
+                title="Remove from list"
+            )
+        ]
+    )
+
+
+def create_suggestions_panel(suggestions: List[PurchaseHistoryItem]) -> html.Div:
+    """Create the suggestions panel."""
+    if not suggestions:
+        return html.Div(
+            className="suggestions-empty",
+            children=[
+                html.Div("💡", className="empty-icon"),
+                html.P("No suggestions yet!"),
+                html.P(
+                    "As you add items through receipt scanning, we'll learn your shopping habits "
+                    "and suggest items you frequently buy.",
+                    className="empty-hint"
+                )
+            ]
+        )
+    
+    return html.Div(
+        className="suggestions-list",
+        children=[create_suggestion_card(item) for item in suggestions]
+    )
+
+
+def create_shopping_list_panel(items: List[ShoppingListItem]) -> html.Div:
+    """Create the shopping list panel."""
+    if not items:
+        return html.Div(
+            className="shopping-list-empty",
+            children=[
+                html.Div("🛒", className="empty-icon"),
+                html.P("Your shopping list is empty!"),
+                html.P("Add items from the suggestions or use the form below.", className="empty-hint")
+            ]
+        )
+    
+    unchecked = [i for i in items if not i.is_checked]
+    checked = [i for i in items if i.is_checked]
+    
+    content = []
+    if unchecked:
+        content.extend([create_shopping_list_item(item) for item in unchecked])
+    if checked:
+        if unchecked:
+            content.append(html.Div(className="shopping-list-divider"))
+        content.append(html.Div("Completed", className="completed-header"))
+        content.extend([create_shopping_list_item(item) for item in checked])
+    
+    return html.Div(className="shopping-list-items", children=content)
+
+
+def create_suppressed_panel(suppressed: List[str]) -> html.Div:
+    """Create the suppressed suggestions panel."""
+    if not suppressed:
+        return html.Div()
+    
+    return html.Details(
+        className="suppressed-panel",
+        children=[
+            html.Summary(f"Hidden suggestions ({len(suppressed)})"),
+            html.Div(
+                className="suppressed-list",
+                children=[
+                    html.Div(
+                        className="suppressed-item",
+                        children=[
+                            html.Span(name.title(), className="suppressed-name"),
+                            html.Button(
+                                "Restore",
+                                className="restore-btn",
+                                id={"type": "unsuppress-btn", "name": name},
+                                n_clicks=0
+                            )
+                        ]
+                    ) for name in suppressed
+                ]
+            )
+        ]
+    )
+
+
+# Main App Layout
 app.layout = html.Div([
     # Header
     html.Div(
@@ -252,79 +427,23 @@ app.layout = html.Div([
         ]
     ),
     
-    # Upload Section
-    html.Div(
-        className="upload-section",
+    # Tabs
+    dcc.Tabs(
+        id="main-tabs",
+        value="food-tab",
+        className="main-tabs",
         children=[
-            html.H3("📷 Upload Receipt"),
-            html.P(
-                "Upload a photo of your grocery receipt to add food items. We'll automatically determine where each item should be stored.",
-                style={"color": "#666", "marginBottom": "15px"}
-            ),
-            dcc.Upload(
-                id="upload-receipt",
-                children=html.Div([
-                    "Drag and drop or ",
-                    html.A("click to select", style={"color": "#667eea", "fontWeight": "600"}),
-                    " a receipt image"
-                ]),
-                className="dash-upload",
-                style={
-                    "width": "100%",
-                    "height": "100px",
-                    "lineHeight": "60px",
-                    "borderWidth": "2px",
-                    "borderStyle": "dashed",
-                    "borderRadius": "10px",
-                    "textAlign": "center",
-                    "cursor": "pointer"
-                },
-                multiple=False,
-                accept="image/*"
-            ),
-            # Date picker for purchase date
-            html.Div(
-                style={"marginTop": "15px", "display": "flex", "alignItems": "center", "gap": "10px"},
-                children=[
-                    html.Label("Purchase Date:", style={"fontWeight": "500"}),
-                    dcc.DatePickerSingle(
-                        id="purchase-date-picker",
-                        date=date.today(),
-                        display_format="MMM D, YYYY",
-                        style={"marginLeft": "10px"}
-                    )
-                ]
-            ),
-            # Processing status with loading spinner
-            dcc.Loading(
-                id="upload-loading",
-                type="default",
-                color="#667eea",
-                children=[
-                    html.Div(id="upload-status", style={"marginTop": "15px"})
-                ],
-                fullscreen=False,
-                style={"marginTop": "20px"},
-                custom_spinner=html.Div([
-                    html.Div(className="upload-spinner"),
-                    html.Div("🔍 Analyzing receipt with Gemini AI...", 
-                             className="upload-spinner-text")
-                ])
-            )
+            dcc.Tab(label="🍎 My Food", value="food-tab", className="main-tab"),
+            dcc.Tab(label="🛒 Shopping List", value="shopping-tab", className="main-tab"),
         ]
     ),
     
-    # Alert messages
-    html.Div(id="alert-container"),
+    # Tab Content Container
+    html.Div(id="tab-content"),
     
-    # Stats Cards
-    html.Div(id="stats-container"),
-    
-    # Items Grid
-    html.Div(id="items-container"),
-    
-    # Hidden store for triggering refreshes
+    # Hidden stores for triggering refreshes
     dcc.Store(id="refresh-trigger", data=0),
+    dcc.Store(id="shopping-refresh-trigger", data=0),
     
     # Interval for auto-refresh (every 60 seconds)
     dcc.Interval(
@@ -333,6 +452,136 @@ app.layout = html.Div([
         n_intervals=0
     )
 ])
+
+
+def create_food_tab_content():
+    """Create the content for the My Food tab."""
+    return html.Div([
+        # Upload Section
+        html.Div(
+            className="upload-section",
+            children=[
+                html.H3("📷 Upload Receipt"),
+                html.P(
+                    "Upload a photo of your grocery receipt to add food items.",
+                    style={"color": "#666", "marginBottom": "15px"}
+                ),
+                dcc.Upload(
+                    id="upload-receipt",
+                    children=html.Div([
+                        "Drag and drop or ",
+                        html.A("click to select", style={"color": "#667eea", "fontWeight": "600"}),
+                        " a receipt image"
+                    ]),
+                    className="dash-upload",
+                    style={
+                        "width": "100%", "height": "100px", "lineHeight": "60px",
+                        "borderWidth": "2px", "borderStyle": "dashed", "borderRadius": "10px",
+                        "textAlign": "center", "cursor": "pointer"
+                    },
+                    multiple=False,
+                    accept="image/*"
+                ),
+                html.Div(
+                    style={"marginTop": "15px", "display": "flex", "alignItems": "center", "gap": "10px"},
+                    children=[
+                        html.Label("Purchase Date:", style={"fontWeight": "500"}),
+                        dcc.DatePickerSingle(
+                            id="purchase-date-picker",
+                            date=date.today(),
+                            display_format="MMM D, YYYY",
+                            style={"marginLeft": "10px"}
+                        )
+                    ]
+                ),
+                dcc.Loading(
+                    id="upload-loading",
+                    type="default",
+                    color="#667eea",
+                    children=[html.Div(id="upload-status", style={"marginTop": "15px"})],
+                    fullscreen=False,
+                    style={"marginTop": "20px"},
+                    custom_spinner=html.Div([
+                        html.Div(className="upload-spinner"),
+                        html.Div("🔍 Analyzing receipt with Gemini AI...", className="upload-spinner-text")
+                    ])
+                )
+            ]
+        ),
+        html.Div(id="alert-container"),
+        html.Div(id="stats-container"),
+        html.Div(id="items-container"),
+    ])
+
+
+def create_shopping_tab_content():
+    """Create the content for the Shopping List tab."""
+    return html.Div(
+        className="shopping-tab-content",
+        children=[
+            html.Div(
+                className="shopping-columns",
+                children=[
+                    html.Div(
+                        className="shopping-column suggestions-column",
+                        children=[
+                            html.H3("💡 Suggested Items"),
+                            html.P("Items you've bought before but aren't in your fridge", className="column-description"),
+                            html.Div(id="suggestions-container")
+                        ]
+                    ),
+                    html.Div(
+                        className="shopping-column list-column",
+                        children=[
+                            html.H3("📝 Your List"),
+                            html.Div(
+                                className="list-actions",
+                                children=[
+                                    html.Button("Clear Checked", id="clear-checked-btn", className="action-btn secondary", n_clicks=0),
+                                    html.Button("Clear All", id="clear-all-btn", className="action-btn danger", n_clicks=0)
+                                ]
+                            ),
+                            html.Div(id="shopping-list-container"),
+                            html.Div(
+                                className="add-item-form",
+                                children=[
+                                    html.H4("Add Item Manually"),
+                                    html.Div(
+                                        className="form-row",
+                                        children=[
+                                            dcc.Input(id="new-item-name", type="text", placeholder="Item name", className="form-input"),
+                                            dcc.Dropdown(
+                                                id="new-item-storage",
+                                                options=[{"label": STORAGE_DISPLAY_NAMES[loc], "value": loc} for loc in STORAGE_LOCATIONS],
+                                                value="fridge",
+                                                className="form-dropdown",
+                                                clearable=False
+                                            ),
+                                            html.Button("Add", id="add-manual-item-btn", className="action-btn primary", n_clicks=0)
+                                        ]
+                                    )
+                                ]
+                            )
+                        ]
+                    )
+                ]
+            ),
+            html.Div(id="suppressed-container"),
+        ]
+    )
+
+
+@callback(
+    Output("tab-content", "children"),
+    Input("main-tabs", "value")
+)
+def render_tab_content(tab):
+    """Render the content for the selected tab."""
+    if tab == "food-tab":
+        return create_food_tab_content()
+    elif tab == "shopping-tab":
+        return create_shopping_tab_content()
+    return html.Div()
 
 
 @callback(
@@ -714,6 +963,157 @@ def update_remaining_slider(slider_values, current_trigger):
             break
     
     return dash.no_update
+
+
+# ============================================================================
+# Shopping List Callbacks
+# ============================================================================
+
+@callback(
+    [Output("suggestions-container", "children"),
+     Output("shopping-list-container", "children"),
+     Output("suppressed-container", "children")],
+    [Input("shopping-refresh-trigger", "data"),
+     Input("main-tabs", "value")],
+    prevent_initial_call=True
+)
+def refresh_shopping_tab(trigger, tab):
+    """Refresh the shopping tab content."""
+    if tab != "shopping-tab":
+        return dash.no_update, dash.no_update, dash.no_update
+    
+    suggestions = db.get_suggested_items(min_purchase_count=1, limit=20)
+    shopping_list = db.get_shopping_list()
+    suppressed = db.get_suppressed_suggestions()
+    
+    return (
+        create_suggestions_panel(suggestions),
+        create_shopping_list_panel(shopping_list),
+        create_suppressed_panel(suppressed)
+    )
+
+
+@callback(
+    Output("shopping-refresh-trigger", "data", allow_duplicate=True),
+    Input({"type": "add-suggestion-btn", "name": ALL, "category": ALL, "storage": ALL}, "n_clicks"),
+    State("shopping-refresh-trigger", "data"),
+    prevent_initial_call=True
+)
+def add_suggestion_to_list(n_clicks, current_trigger):
+    """Add a suggested item to the shopping list."""
+    if not ctx.triggered_id or not any(n_clicks):
+        return dash.no_update
+    
+    name = ctx.triggered_id["name"]
+    category = ctx.triggered_id["category"] or None
+    storage = ctx.triggered_id["storage"]
+    
+    db.add_to_shopping_list(name, category, storage, source="suggested")
+    return current_trigger + 1
+
+
+@callback(
+    Output("shopping-refresh-trigger", "data", allow_duplicate=True),
+    Input({"type": "suppress-suggestion-btn", "name": ALL}, "n_clicks"),
+    State("shopping-refresh-trigger", "data"),
+    prevent_initial_call=True
+)
+def suppress_suggestion_callback(n_clicks, current_trigger):
+    """Suppress a suggestion from appearing."""
+    if not ctx.triggered_id or not any(n_clicks):
+        return dash.no_update
+    
+    name = ctx.triggered_id["name"]
+    db.suppress_suggestion(name)
+    return current_trigger + 1
+
+
+@callback(
+    Output("shopping-refresh-trigger", "data", allow_duplicate=True),
+    Input({"type": "unsuppress-btn", "name": ALL}, "n_clicks"),
+    State("shopping-refresh-trigger", "data"),
+    prevent_initial_call=True
+)
+def unsuppress_suggestion_callback(n_clicks, current_trigger):
+    """Restore a suppressed suggestion."""
+    if not ctx.triggered_id or not any(n_clicks):
+        return dash.no_update
+    
+    name = ctx.triggered_id["name"]
+    db.unsuppress_suggestion(name)
+    return current_trigger + 1
+
+
+@callback(
+    Output("shopping-refresh-trigger", "data", allow_duplicate=True),
+    Input({"type": "toggle-shopping-item", "index": ALL}, "n_clicks"),
+    State("shopping-refresh-trigger", "data"),
+    prevent_initial_call=True
+)
+def toggle_shopping_item(n_clicks, current_trigger):
+    """Toggle a shopping list item's checked status."""
+    if not ctx.triggered_id or not any(n_clicks):
+        return dash.no_update
+    
+    item_id = ctx.triggered_id["index"]
+    db.toggle_shopping_list_item(item_id)
+    return current_trigger + 1
+
+
+@callback(
+    Output("shopping-refresh-trigger", "data", allow_duplicate=True),
+    Input({"type": "remove-shopping-item", "index": ALL}, "n_clicks"),
+    State("shopping-refresh-trigger", "data"),
+    prevent_initial_call=True
+)
+def remove_shopping_item(n_clicks, current_trigger):
+    """Remove an item from the shopping list."""
+    if not ctx.triggered_id or not any(n_clicks):
+        return dash.no_update
+    
+    item_id = ctx.triggered_id["index"]
+    db.remove_from_shopping_list(item_id)
+    return current_trigger + 1
+
+
+@callback(
+    Output("shopping-refresh-trigger", "data", allow_duplicate=True),
+    [Input("clear-checked-btn", "n_clicks"),
+     Input("clear-all-btn", "n_clicks")],
+    State("shopping-refresh-trigger", "data"),
+    prevent_initial_call=True
+)
+def clear_shopping_list_callback(clear_checked, clear_all, current_trigger):
+    """Clear the shopping list (checked only or all)."""
+    if not ctx.triggered_id:
+        return dash.no_update
+    
+    if ctx.triggered_id == "clear-checked-btn" and clear_checked:
+        db.clear_shopping_list(checked_only=True)
+    elif ctx.triggered_id == "clear-all-btn" and clear_all:
+        db.clear_shopping_list(checked_only=False)
+    else:
+        return dash.no_update
+    
+    return current_trigger + 1
+
+
+@callback(
+    [Output("shopping-refresh-trigger", "data", allow_duplicate=True),
+     Output("new-item-name", "value")],
+    Input("add-manual-item-btn", "n_clicks"),
+    [State("new-item-name", "value"),
+     State("new-item-storage", "value"),
+     State("shopping-refresh-trigger", "data")],
+    prevent_initial_call=True
+)
+def add_manual_item(n_clicks, name, storage, current_trigger):
+    """Add a manually entered item to the shopping list."""
+    if not n_clicks or not name or not name.strip():
+        return dash.no_update, dash.no_update
+    
+    db.add_to_shopping_list(name.strip(), None, storage, source="manual")
+    return current_trigger + 1, ""
 
 
 def run_server(debug: bool = False, port: int = 8050, host: str = "0.0.0.0"):

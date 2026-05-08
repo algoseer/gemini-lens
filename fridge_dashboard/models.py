@@ -127,3 +127,51 @@ class FridgeItem:
             category=data.get("category"),
             storage_location=data.get("storage_location", STORAGE_FRIDGE),
         )
+
+
+@dataclass
+class PurchaseHistoryItem:
+    """Represents an item's purchase history for shopping recommendations."""
+    
+    id: Optional[int]
+    normalized_name: str
+    display_name: str
+    category: Optional[str]
+    storage_location: str
+    purchase_count: int
+    last_purchased: date
+    
+    @property
+    def storage_display(self) -> str:
+        """Get display name for storage location."""
+        return STORAGE_DISPLAY_NAMES.get(self.storage_location, "🧊 Fridge")
+    
+    @property
+    def frequency_label(self) -> str:
+        """Get a human-readable frequency label."""
+        if self.purchase_count >= 10:
+            return "Very frequent"
+        elif self.purchase_count >= 5:
+            return "Frequent"
+        elif self.purchase_count >= 3:
+            return "Regular"
+        else:
+            return "Occasional"
+
+
+@dataclass
+class ShoppingListItem:
+    """Represents an item on the shopping list."""
+    
+    id: Optional[int]
+    name: str
+    category: Optional[str]
+    storage_location: str
+    is_checked: bool
+    added_at: datetime
+    source: str  # 'manual' or 'suggested'
+    
+    @property
+    def storage_display(self) -> str:
+        """Get display name for storage location."""
+        return STORAGE_DISPLAY_NAMES.get(self.storage_location, "🧊 Fridge")
