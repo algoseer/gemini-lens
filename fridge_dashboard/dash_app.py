@@ -619,7 +619,15 @@ def create_recipe_chat_content():
                         ]
                     )
                 ]
-            )
+            ),
+            # Streaming components
+            dcc.Interval(
+                id="chat-stream-interval",
+                interval=100,  # Poll every 100ms
+                disabled=True,
+                n_intervals=0
+            ),
+            dcc.Store(id="streaming-state", data={"active": False, "pending_message": None, "use_doc": False})
         ]
     )
 
@@ -691,18 +699,51 @@ def render_chat_messages(history):
     return messages
 
 
+def render_chat_messages_with_streaming(history, streaming_text=None):
+    """Render chat history as HTML components, optionally with a streaming message."""
+    messages = render_chat_messages(history)
+    
+    # Add streaming message if there's content
+    if streaming_text is not None:
+        messages.append(html.Div(className="chat-message bot", children=[
+            html.Span("🤖", className="message-avatar"),
+            html.Div(
+                children=[
+                    html.Span(streaming_text if streaming_text else ""),
+                    html.Span(className="typing-cursor")
+                ],
+                className="message-content message-streaming"
+            )
+        ]))
+    
+    return messages
+
+
+def render_typing_indicator():
+    """Render a typing indicator for the bot."""
+    return html.Div(className="chat-message bot", children=[
+        html.Span("🤖", className="message-avatar"),
+        html.Div(className="message-content typing-indicator", children=[
+            html.Span("●", className="dot dot-1"),
+            html.Span("●", className="dot dot-2"),
+            html.Span("●", className="dot dot-3"),
+        ])
+    ])
+
+
 @callback(
     [Output("chat-messages", "children", allow_duplicate=True),
-     Output("chat-history", "data"),
-     Output("chat-input", "value")],
+     Output("chat-input", "value"),
+     Output("streaming-state", "data"),
+     Output("chat-stream-interval", "disabled")],
     [Input("chat-send-btn", "n_clicks"), Input("chat-input", "n_submit")],
     [State("chat-input", "value"), State("chat-history", "data"), State("use-recipes-doc", "value")],
     prevent_initial_call=True
 )
-def handle_chat_message(n_clicks, n_submit, message, history, use_recipes):
-    """Handle sending a chat message."""
+def start_chat_stream(n_clicks, n_submit, message, history, use_recipes):
+    """Handle sending a chat message - starts streaming."""
     if not message or not message.strip():
-        return dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
     
     message = message.strip()
     use_doc = "yes" in (use_recipes or [])
@@ -710,11 +751,76 @@ def handle_chat_message(n_clicks, n_submit, message, history, use_recipes):
     if not history:
         history = [{"role": "assistant", "content": chat_engine.get_welcome_message()}]
     
-    history.append({"role": "user", "content": message})
-    response = chat_engine.generate_response(message, use_recipes_doc=use_doc)
-    history.append({"role": "assistant", "content": response})
+    # Add user message to display
+    history_with_user = history + [{"role": "user", "content": message}]
     
-    return render_chat_messages(history), history, ""
+    # Start streaming in background
+    chat_engine.start_streaming_response(message, use_recipes_doc=use_doc)
+    
+    # Show user message + typing indicator
+    messages = render_chat_messages(history_with_user)
+    messages.append(render_typing_indicator())
+    
+    # Enable interval for polling, store pending message info
+    streaming_state = {
+        "active": True,
+        "pending_message": message,
+        "use_doc": use_doc,
+        "history_before": history
+    }
+    
+    return messages, "", streaming_state, False  # False = interval enabled
+
+
+@callback(
+    [Output("chat-messages", "children", allow_duplicate=True),
+     Output("chat-history", "data"),
+     Output("streaming-state", "data", allow_duplicate=True),
+     Output("chat-stream-interval", "disabled", allow_duplicate=True)],
+    Input("chat-stream-interval", "n_intervals"),
+    [State("streaming-state", "data"), State("chat-history", "data")],
+    prevent_initial_call=True
+)
+def poll_streaming_response(n_intervals, streaming_state, history):
+    """Poll for streaming response updates."""
+    if not streaming_state or not streaming_state.get("active"):
+        return dash.no_update, dash.no_update, dash.no_update, True  # Disable interval
+    
+    # Get current streaming state from chat engine
+    current_text, is_complete, error = chat_engine.get_streaming_state()
+    
+    if not history:
+        history = [{"role": "assistant", "content": chat_engine.get_welcome_message()}]
+    
+    # Reconstruct history with the user's message
+    pending_message = streaming_state.get("pending_message")
+    history_with_user = history + [{"role": "user", "content": pending_message}]
+    
+    if error:
+        # Error occurred - show error message and stop
+        new_history = history_with_user + [{"role": "assistant", "content": error}]
+        return (
+            render_chat_messages(new_history),
+            new_history,
+            {"active": False, "pending_message": None, "use_doc": False},
+            True  # Disable interval
+        )
+    
+    if is_complete:
+        # Streaming complete - finalize message
+        final_text = current_text.strip() if current_text else "I couldn't generate a response."
+        new_history = history_with_user + [{"role": "assistant", "content": final_text}]
+        return (
+            render_chat_messages(new_history),
+            new_history,
+            {"active": False, "pending_message": None, "use_doc": False},
+            True  # Disable interval
+        )
+    
+    # Still streaming - update with current text
+    messages = render_chat_messages_with_streaming(history_with_user, current_text)
+    
+    return messages, dash.no_update, dash.no_update, False  # Keep interval enabled
 
 
 @callback(

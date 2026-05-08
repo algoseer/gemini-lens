@@ -5,9 +5,10 @@ vegetables and meat from the fridge database.
 """
 
 import os
+import threading
 from datetime import date
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 from dotenv import load_dotenv
 from google import genai
@@ -81,6 +82,13 @@ class RecipeChatEngine:
     def __init__(self, max_history: int = 10):
         self.max_history = max_history
         self.conversation_history: List[Dict[str, str]] = []
+        
+        # Streaming state
+        self._streaming_lock = threading.Lock()
+        self._streaming_buffer = ""
+        self._is_streaming = False
+        self._streaming_complete = False
+        self._streaming_error: Optional[str] = None
     
     def _build_system_prompt(self, use_recipes_doc: bool = False) -> str:
         """Build the system prompt with current ingredients."""
@@ -143,3 +151,95 @@ class RecipeChatEngine:
             msg += f" — {len(expiring)} item(s) are expiring soon!"
         msg += "\n\nWhat would you like to cook today?"
         return msg
+    
+    def start_streaming_response(self, user_message: str, use_recipes_doc: bool = False) -> bool:
+        """
+        Start streaming a response in a background thread.
+        
+        Returns True if streaming started successfully, False if already streaming.
+        """
+        with self._streaming_lock:
+            if self._is_streaming:
+                return False
+            
+            # Reset streaming state
+            self._streaming_buffer = ""
+            self._is_streaming = True
+            self._streaming_complete = False
+            self._streaming_error = None
+        
+        # Start background thread
+        thread = threading.Thread(
+            target=self._stream_worker,
+            args=(user_message, use_recipes_doc),
+            daemon=True
+        )
+        thread.start()
+        return True
+    
+    def _stream_worker(self, user_message: str, use_recipes_doc: bool):
+        """Background worker that streams the Gemini response."""
+        if client is None:
+            with self._streaming_lock:
+                self._streaming_error = "❌ Gemini API not configured. Please set GOOGLE_API_KEY."
+                self._streaming_complete = True
+                self._is_streaming = False
+            return
+        
+        try:
+            system_prompt = self._build_system_prompt(use_recipes_doc)
+            
+            # Add user message to history
+            self.conversation_history.append({"role": "user", "content": user_message})
+            
+            # Build contents for the API call
+            contents = [system_prompt]
+            for msg in self.conversation_history:
+                prefix = "User: " if msg["role"] == "user" else "Assistant: "
+                contents.append(prefix + msg["content"])
+            
+            # Use streaming API
+            response_stream = client.models.generate_content_stream(
+                model=MODEL_ID,
+                contents="\n\n".join(contents)
+            )
+            
+            # Process streaming chunks
+            for chunk in response_stream:
+                if chunk.text:
+                    with self._streaming_lock:
+                        self._streaming_buffer += chunk.text
+            
+            # Finalize
+            with self._streaming_lock:
+                final_response = self._streaming_buffer.strip()
+                self.conversation_history.append({"role": "assistant", "content": final_response})
+                self._trim_history()
+                self._streaming_complete = True
+                self._is_streaming = False
+                
+        except Exception as e:
+            with self._streaming_lock:
+                self._streaming_error = f"❌ Error generating response: {str(e)}"
+                self._streaming_complete = True
+                self._is_streaming = False
+    
+    def get_streaming_state(self) -> Tuple[str, bool, Optional[str]]:
+        """
+        Get the current streaming state.
+        
+        Returns:
+            Tuple of (current_text, is_complete, error_message)
+        """
+        with self._streaming_lock:
+            return (
+                self._streaming_buffer,
+                self._streaming_complete,
+                self._streaming_error
+            )
+    
+    def is_streaming(self) -> bool:
+        """Check if currently streaming."""
+        with self._streaming_lock:
+            return self._is_streaming
+
