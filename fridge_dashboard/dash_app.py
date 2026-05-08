@@ -737,21 +737,46 @@ def update_ingredients_list(tab, trigger):
 
 
 @callback(
-    Output("chat-messages", "children"),
+    [Output("chat-messages", "children"),
+     Output("streaming-state", "data", allow_duplicate=True),
+     Output("chat-stream-interval", "disabled", allow_duplicate=True)],
     [Input("main-tabs", "value")],
-    [State("chat-history", "data")]
+    [State("chat-history", "data")],
+    prevent_initial_call=True
 )
 def initialize_chat(tab, history):
-    """Initialize chat with welcome message when tab is opened."""
+    """Initialize chat with welcome message and initial suggestions when tab is opened."""
     if tab != "recipe-chat-tab":
-        return dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update
+    
     if not history:
         welcome = chat_engine.get_welcome_message()
-        return [html.Div(className="chat-message bot", children=[
+        welcome_message = html.Div(className="chat-message bot", children=[
             html.Span("🤖", className="message-avatar"),
             html.Div(welcome, className="message-content")
-        ])]
-    return render_chat_messages(history)
+        ])
+        
+        # Check if we have ingredients to suggest recipes
+        initial_prompt = chat_engine.get_initial_suggestions_prompt()
+        if initial_prompt:
+            # Start streaming initial suggestions
+            chat_engine.start_initial_suggestions(use_recipes_doc=False)
+            
+            # Show welcome + typing indicator, enable streaming interval
+            messages = [welcome_message, render_typing_indicator()]
+            streaming_state = {
+                "active": True,
+                "pending_message": initial_prompt,
+                "use_doc": False,
+                "history_before": [{"role": "assistant", "content": welcome}],
+                "is_initial": True
+            }
+            return messages, streaming_state, False  # False = interval enabled
+        else:
+            # No ingredients, just show welcome message
+            return [welcome_message], dash.no_update, dash.no_update
+    
+    return render_chat_messages(history), dash.no_update, dash.no_update
 
 
 def render_chat_messages(history):
@@ -861,16 +886,23 @@ def poll_streaming_response(n_intervals, streaming_state, history):
     # Get current streaming state from chat engine
     current_text, is_complete, error = chat_engine.get_streaming_state()
     
+    # Check if this is the initial suggestions (no user message shown)
+    is_initial = streaming_state.get("is_initial", False)
+    
     if not history:
         history = [{"role": "assistant", "content": chat_engine.get_welcome_message()}]
     
-    # Reconstruct history with the user's message
-    pending_message = streaming_state.get("pending_message")
-    history_with_user = history + [{"role": "user", "content": pending_message}]
+    # For initial suggestions, we don't add a user message to display
+    if is_initial:
+        base_history = history
+    else:
+        # Reconstruct history with the user's message
+        pending_message = streaming_state.get("pending_message")
+        base_history = history + [{"role": "user", "content": pending_message}]
     
     if error:
         # Error occurred - show error message and stop
-        new_history = history_with_user + [{"role": "assistant", "content": error}]
+        new_history = base_history + [{"role": "assistant", "content": error}]
         return (
             render_chat_messages(new_history),
             new_history,
@@ -881,7 +913,7 @@ def poll_streaming_response(n_intervals, streaming_state, history):
     if is_complete:
         # Streaming complete - finalize message
         final_text = current_text.strip() if current_text else "I couldn't generate a response."
-        new_history = history_with_user + [{"role": "assistant", "content": final_text}]
+        new_history = base_history + [{"role": "assistant", "content": final_text}]
         return (
             render_chat_messages(new_history),
             new_history,
@@ -890,7 +922,7 @@ def poll_streaming_response(n_intervals, streaming_state, history):
         )
     
     # Still streaming - update with current text
-    messages = render_chat_messages_with_streaming(history_with_user, current_text)
+    messages = render_chat_messages_with_streaming(base_history, current_text)
     
     return messages, dash.no_update, dash.no_update, False  # Keep interval enabled
 

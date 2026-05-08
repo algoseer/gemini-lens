@@ -142,8 +142,45 @@ class RecipeChatEngine:
         
         if expiring:
             msg += f" — {len(expiring)} item(s) are expiring soon!"
-        msg += "\n\nWhat would you like to cook today?"
+        msg += "\n\nLet me suggest a few things you can make..."
         return msg
+    
+    def get_initial_suggestions_prompt(self) -> Optional[str]:
+        """
+        Build a prompt for initial recipe suggestions based on available ingredients.
+        Returns None if no ingredients are available.
+        """
+        items = get_vegetables_and_meat()
+        
+        if not items:
+            return None
+        
+        ingredients_text = format_ingredients_for_prompt(items)
+        
+        # Build a prompt that asks for quick suggestions
+        prompt = f"""Based on these ingredients I have in my fridge:
+
+{ingredients_text}
+
+Suggest 2-3 quick recipe ideas I could make. For each suggestion:
+- Give a brief name
+- List main ingredients from my fridge it would use
+- Mention if it uses any expiring items (marked with ⚠️)
+
+Keep it concise - just the highlights. I can ask for more details on any recipe I'm interested in."""
+        
+        return prompt
+    
+    def start_initial_suggestions(self, use_recipes_doc: bool = False) -> bool:
+        """
+        Start streaming initial recipe suggestions based on fridge contents.
+        Returns True if streaming started, False if no ingredients or already streaming.
+        """
+        prompt = self.get_initial_suggestions_prompt()
+        if prompt is None:
+            return False
+        
+        return self.start_streaming_response(prompt, use_recipes_doc=use_recipes_doc)
     
     def start_streaming_response(self, user_message: str, use_recipes_doc: bool = False) -> bool:
         """
