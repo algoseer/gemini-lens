@@ -1484,3 +1484,180 @@ details[open] .ingredients-header::before {
     }
 }
 
+/* ============================================
+   COMPACT FOOD GRID STYLES
+   ============================================ */
+
+.compact-food-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.storage-section {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+}
+
+.storage-section.fridge-section {
+    border-top: 4px solid #2196F3;
+}
+
+.storage-section.freezer-section {
+    border-top: 4px solid #00BCD4;
+}
+
+.storage-section.pantry-section {
+    border-top: 4px solid #FF9800;
+}
+
+.storage-section.counter-section {
+    border-top: 4px solid #8BC34A;
+}
+
+.storage-section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.storage-section-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.storage-section-count {
+    font-size: 0.9rem;
+    color: #888;
+    font-weight: 400;
+}
+
+.food-badges-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.food-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 20px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.food-badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.food-badge.fresh {
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+    border-color: #a5d6a7;
+}
+
+.food-badge.warning {
+    background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%);
+    border-color: #ffe082;
+}
+
+.food-badge.danger {
+    background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+    border-color: #ef9a9a;
+}
+
+.food-badge-emoji {
+    font-size: 0.9rem;
+}
+
+.food-badge-name {
+    font-weight: 500;
+    color: #333;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.food-badge-days {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.7);
+}
+
+.food-badge-days.fresh {
+    color: #2e7d32;
+}
+
+.food-badge-days.warning {
+    color: #f57c00;
+}
+
+.food-badge-days.danger {
+    color: #c62828;
+}
+
+.food-badge-delete {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: #bbb;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    margin-left: 2px;
+}
+
+.food-badge-delete:hover {
+    background: #dc3545;
+    color: white;
+}
+
+/* Responsive adjustments for compact grid */
+@media (max-width: 768px) {
+    .compact-food-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .food-badge-name {
+        max-width: 100px;
+    }
+}
+
+@media (max-width: 480px) {
+    .storage-section {
+        padding: 15px;
+    }
+    
+    .food-badge {
+        padding: 5px 8px;
+        font-size: 0.8rem;
+    }
+    
+    .food-badge-name {
+        max-width: 80px;
+    }
+}
+
+

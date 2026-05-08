@@ -228,17 +228,87 @@ def create_empty_state() -> html.Div:
     )
 
 
+def create_compact_food_badge(item: FridgeItem) -> html.Div:
+    """Create a compact badge for a food item."""
+    status_class = get_status_class(item.freshness_percentage)
+    days_text = f"{item.days_remaining}d" if item.days_remaining >= 0 else "Exp"
+    
+    return html.Div(
+        className=f"food-badge {status_class}",
+        id={"type": "food-badge", "index": item.id},
+        children=[
+            html.Span(item.status_emoji, className="food-badge-emoji"),
+            html.Span(item.name, className="food-badge-name"),
+            html.Span(days_text, className=f"food-badge-days {status_class}"),
+            html.Button(
+                "×",
+                className="food-badge-delete",
+                id={"type": "delete-btn", "index": item.id},
+                n_clicks=0
+            )
+        ]
+    )
+
+
 def create_items_grid(items: List[FridgeItem]) -> html.Div:
-    """Create the grid of item cards."""
+    """Create a compact view of items organized by storage location."""
     if not items:
         return create_empty_state()
     
-    # Sort items by freshness (most urgent first)
-    sorted_items = sorted(items, key=lambda x: x.freshness_percentage)
+    # Group items by storage location
+    storage_groups = {
+        "fridge": [],
+        "freezer": [],
+        "pantry": [],
+        "counter": []
+    }
+    
+    for item in items:
+        location = item.storage_location or "fridge"
+        if location in storage_groups:
+            storage_groups[location].append(item)
+        else:
+            storage_groups["fridge"].append(item)  # Default fallback
+    
+    # Sort each group by freshness (most urgent first)
+    for location in storage_groups:
+        storage_groups[location].sort(key=lambda x: x.freshness_percentage)
+    
+    # Create storage sections
+    sections = []
+    
+    storage_config = [
+        ("fridge", "🧊 Fridge", "fridge-section"),
+        ("freezer", "❄️ Freezer", "freezer-section"),
+        ("pantry", "🗄️ Pantry", "pantry-section"),
+        ("counter", "🍎 Counter", "counter-section"),
+    ]
+    
+    for location, title, section_class in storage_config:
+        items_in_location = storage_groups[location]
+        if items_in_location:
+            sections.append(
+                html.Div(
+                    className=f"storage-section {section_class}",
+                    children=[
+                        html.Div(
+                            className="storage-section-header",
+                            children=[
+                                html.Span(title, className="storage-section-title"),
+                                html.Span(f"({len(items_in_location)})", className="storage-section-count")
+                            ]
+                        ),
+                        html.Div(
+                            className="food-badges-container",
+                            children=[create_compact_food_badge(item) for item in items_in_location]
+                        )
+                    ]
+                )
+            )
     
     return html.Div(
-        className="items-grid",
-        children=[create_item_card(item) for item in sorted_items]
+        className="compact-food-grid",
+        children=sections
     )
 
 
