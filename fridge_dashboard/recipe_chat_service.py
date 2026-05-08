@@ -58,6 +58,23 @@ def format_ingredients_for_prompt(items: List[FridgeItem]) -> str:
     return "\n".join(lines)
 
 
+# Path to the cooking history markdown file
+COOKING_HISTORY_PATH = Path(__file__).parent.parent / "data" / "cooking_history.md"
+
+
+def load_cooking_history() -> Optional[str]:
+    """Load the cooking history from the markdown file.
+    
+    Returns the contents of the cooking history file, or None if not found.
+    """
+    try:
+        if COOKING_HISTORY_PATH.exists():
+            return COOKING_HISTORY_PATH.read_text(encoding="utf-8")
+    except Exception:
+        pass
+    return None
+
+
 SYSTEM_PROMPT = """You are a helpful cooking assistant for a home kitchen.
 Help users find inspiring recipes and cooking ideas.
 
@@ -147,7 +164,8 @@ class RecipeChatEngine:
     
     def get_initial_suggestions_prompt(self) -> Optional[str]:
         """
-        Build a prompt for initial recipe suggestions based on available ingredients.
+        Build a prompt for initial recipe suggestions based on available ingredients
+        and the user's cooking history.
         Returns None if no ingredients are available.
         """
         items = get_vegetables_and_meat()
@@ -157,15 +175,27 @@ class RecipeChatEngine:
         
         ingredients_text = format_ingredients_for_prompt(items)
         
-        # Build a prompt that asks for quick suggestions
+        # Load cooking history for personalized suggestions
+        cooking_history = load_cooking_history()
+        history_section = ""
+        if cooking_history:
+            history_section = f"""
+Here's my cooking history and preferences:
+
+{cooking_history}
+
+"""
+        
+        # Build a prompt that asks for personalized suggestions
         prompt = f"""Based on these ingredients I have in my fridge:
 
 {ingredients_text}
-
+{history_section}
 Suggest 2-3 quick recipe ideas I could make. For each suggestion:
 - Give a brief name
 - List main ingredients from my fridge it would use
 - Mention if it uses any expiring items (marked with ⚠️)
+- Consider my cooking history and preferences when making suggestions
 
 Keep it concise - just the highlights. I can ask for more details on any recipe I'm interested in."""
         
