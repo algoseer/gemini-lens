@@ -59,16 +59,12 @@ def format_ingredients_for_prompt(items: List[FridgeItem]) -> str:
 
 
 SYSTEM_PROMPT = """You are a helpful cooking assistant for a home kitchen.
-Suggest recipes based on the ingredients the user has available.
-
-AVAILABLE INGREDIENTS:
-{ingredients}
+Help users find inspiring recipes and cooking ideas.
 
 GUIDELINES:
-1. Prioritize ingredients expiring soon (marked with ⚠️)
-2. Suggest practical home-cooking recipes
-3. Be creative but realistic
-4. Keep responses concise but helpful
+1. Suggest practical home-cooking recipes
+2. Be creative but realistic
+3. Keep responses concise but helpful
 {recipes_doc_instruction}
 Respond in a friendly tone. Use emojis sparingly."""
 
@@ -91,12 +87,9 @@ class RecipeChatEngine:
         self._streaming_error: Optional[str] = None
     
     def _build_system_prompt(self, use_recipes_doc: bool = False) -> str:
-        """Build the system prompt with current ingredients."""
-        items = get_vegetables_and_meat()
-        ingredients = format_ingredients_for_prompt(items)
+        """Build the system prompt."""
         recipes_instruction = RECIPES_DOC_INSTRUCTION if use_recipes_doc else ""
         return SYSTEM_PROMPT.format(
-            ingredients=ingredients,
             recipes_doc_instruction=recipes_instruction
         )
     

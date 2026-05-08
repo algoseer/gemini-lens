@@ -579,12 +579,12 @@ def create_recipe_chat_content():
     return html.Div(
         className="recipe-chat-container",
         children=[
-            # Ingredients Sidebar
+            # Expiring Items Sidebar
             html.Details(
                 className="ingredients-sidebar",
                 open=True,
                 children=[
-                    html.Summary("🥬 Available Ingredients", className="ingredients-header"),
+                    html.Summary("⚠️ Expiring Soon", className="ingredients-header"),
                     html.Div(id="ingredients-list", className="ingredients-list")
                 ]
             ),
@@ -654,13 +654,15 @@ def create_ingredient_item(item: FridgeItem) -> html.Div:
     [Input("main-tabs", "value"), Input("refresh-trigger", "data")]
 )
 def update_ingredients_list(tab, trigger):
-    """Update the ingredients list when switching to Recipe Chat tab."""
+    """Update the expiring items list when switching to Recipe Chat tab."""
     if tab != "recipe-chat-tab":
         return dash.no_update
     items = get_vegetables_and_meat()
-    if not items:
-        return html.Div("No vegetables or meat in your fridge yet.", className="no-ingredients")
-    sorted_items = sorted(items, key=lambda x: x.freshness_percentage)
+    # Only show items that are expiring (freshness < 60%)
+    expiring_items = [item for item in items if item.freshness_percentage < 60]
+    if not expiring_items:
+        return html.Div("All your food is fresh! 🎉", className="no-ingredients")
+    sorted_items = sorted(expiring_items, key=lambda x: x.freshness_percentage)
     return [create_ingredient_item(item) for item in sorted_items]
 
 
