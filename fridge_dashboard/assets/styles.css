@@ -1166,3 +1166,242 @@ body {
         min-width: 100%;
     }
 }
+
+/* ============================================
+   RECIPE CHAT STYLING
+   ============================================ */
+
+.recipe-chat-container {
+    display: flex;
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+    min-height: 500px;
+}
+
+.ingredients-sidebar {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    width: 280px;
+    flex-shrink: 0;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.ingredients-header {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: #333;
+    cursor: pointer;
+    padding: 5px 0;
+    list-style: none;
+}
+
+.ingredients-header::-webkit-details-marker {
+    display: none;
+}
+
+.ingredients-header::before {
+    content: "▼ ";
+    font-size: 0.8em;
+}
+
+details[open] .ingredients-header::before {
+    content: "▲ ";
+}
+
+.ingredients-list {
+    margin-top: 15px;
+}
+
+.ingredient-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    background: #f8f9fa;
+    gap: 8px;
+}
+
+.ingredient-item.fresh {
+    border-left: 3px solid #28a745;
+}
+
+.ingredient-item.warning {
+    border-left: 3px solid #ffc107;
+}
+
+.ingredient-item.danger {
+    border-left: 3px solid #dc3545;
+    background: #fff5f5;
+}
+
+.ingredient-emoji {
+    font-size: 1rem;
+}
+
+.ingredient-name {
+    flex: 1;
+    font-weight: 500;
+    color: #333;
+    font-size: 0.9rem;
+}
+
+.ingredient-days {
+    font-size: 0.8rem;
+    color: #888;
+}
+
+.no-ingredients {
+    color: #888;
+    font-style: italic;
+    padding: 20px 0;
+    text-align: center;
+}
+
+.chat-area {
+    flex: 1;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.chat-messages {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    min-height: 400px;
+    max-height: 500px;
+}
+
+.chat-message {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 16px;
+    gap: 10px;
+}
+
+.chat-message.user {
+    flex-direction: row-reverse;
+}
+
+.message-avatar {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.message-content {
+    background: #f1f3f4;
+    padding: 12px 16px;
+    border-radius: 18px;
+    max-width: 75%;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.chat-message.user .message-content {
+    background: #667eea;
+    color: white;
+}
+
+.chat-message.bot .message-content {
+    background: #f1f3f4;
+    color: #333;
+}
+
+.chat-input-area {
+    padding: 15px 20px;
+    border-top: 1px solid #eee;
+    background: #fafafa;
+}
+
+.recipes-doc-checkbox {
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.recipes-doc-checkbox label {
+    cursor: pointer;
+}
+
+.chat-input-row {
+    display: flex;
+    gap: 10px;
+}
+
+.chat-input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 25px;
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.chat-input:focus {
+    border-color: #667eea;
+}
+
+.chat-send-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.chat-send-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+/* Mobile Responsive - Recipe Chat */
+@media (max-width: 768px) {
+    .recipe-chat-container {
+        flex-direction: column;
+    }
+    
+    .ingredients-sidebar {
+        width: 100%;
+        max-height: none;
+    }
+    
+    .ingredients-sidebar[open] {
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    
+    .chat-area {
+        min-height: 400px;
+    }
+    
+    .chat-messages {
+        min-height: 300px;
+        max-height: calc(100vh - 350px);
+    }
+    
+    .message-content {
+        max-width: 85%;
+    }
+    
+    .chat-input {
+        padding: 10px 14px;
+    }
+    
+    .chat-send-btn {
+        width: 44px;
+        height: 44px;
+    }
+}

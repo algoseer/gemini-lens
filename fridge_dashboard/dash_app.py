@@ -13,6 +13,7 @@ import dash_bootstrap_components as dbc
 from . import database as db
 from .models import FridgeItem, PurchaseHistoryItem, ShoppingListItem, STORAGE_LOCATIONS, STORAGE_DISPLAY_NAMES
 from .gemini_service import process_receipt_to_fridge_items
+from .recipe_chat_service import RecipeChatEngine, get_vegetables_and_meat
 
 # Check if debug mode is enabled via environment variable
 DEBUG_MODE = os.environ.get("DEBUG_MODE", "false").lower() in ("true", "1", "yes")
@@ -435,6 +436,7 @@ app.layout = html.Div([
         children=[
             dcc.Tab(label="🍎 My Food", value="food-tab", className="main-tab"),
             dcc.Tab(label="🛒 Shopping List", value="shopping-tab", className="main-tab"),
+            dcc.Tab(label="🍳 Recipe Chat", value="recipe-chat-tab", className="main-tab"),
         ]
     ),
     
@@ -444,6 +446,7 @@ app.layout = html.Div([
     # Hidden stores for triggering refreshes
     dcc.Store(id="refresh-trigger", data=0),
     dcc.Store(id="shopping-refresh-trigger", data=0),
+    dcc.Store(id="chat-history", data=[]),
     
     # Interval for auto-refresh (every 60 seconds)
     dcc.Interval(
@@ -571,6 +574,149 @@ def create_shopping_tab_content():
     )
 
 
+def create_recipe_chat_content():
+    """Create the content for the Recipe Chat tab."""
+    return html.Div(
+        className="recipe-chat-container",
+        children=[
+            # Ingredients Sidebar
+            html.Details(
+                className="ingredients-sidebar",
+                open=True,
+                children=[
+                    html.Summary("🥬 Available Ingredients", className="ingredients-header"),
+                    html.Div(id="ingredients-list", className="ingredients-list")
+                ]
+            ),
+            # Chat Area
+            html.Div(
+                className="chat-area",
+                children=[
+                    html.Div(id="chat-messages", className="chat-messages"),
+                    html.Div(
+                        className="chat-input-area",
+                        children=[
+                            dcc.Checklist(
+                                id="use-recipes-doc",
+                                options=[{"label": " Include my Recipes Doc", "value": "yes"}],
+                                value=[],
+                                className="recipes-doc-checkbox"
+                            ),
+                            html.Div(
+                                className="chat-input-row",
+                                children=[
+                                    dcc.Input(
+                                        id="chat-input",
+                                        type="text",
+                                        placeholder="What would you like to cook?",
+                                        className="chat-input",
+                                        debounce=False,
+                                        n_submit=0
+                                    ),
+                                    html.Button("➤", id="chat-send-btn", className="chat-send-btn", n_clicks=0)
+                                ]
+                            )
+                        ]
+                    )
+                ]
+            )
+        ]
+    )
+
+
+# Initialize chat engine (module-level for persistence)
+chat_engine = RecipeChatEngine()
+
+
+def create_ingredient_item(item: FridgeItem) -> html.Div:
+    """Create a single ingredient list item."""
+    status_class = get_status_class(item.freshness_percentage)
+    return html.Div(
+        className=f"ingredient-item {status_class}",
+        children=[
+            html.Span(item.status_emoji, className="ingredient-emoji"),
+            html.Span(item.name, className="ingredient-name"),
+            html.Span(f"({item.days_remaining}d)", className="ingredient-days")
+        ]
+    )
+
+
+@callback(
+    Output("ingredients-list", "children"),
+    [Input("main-tabs", "value"), Input("refresh-trigger", "data")]
+)
+def update_ingredients_list(tab, trigger):
+    """Update the ingredients list when switching to Recipe Chat tab."""
+    if tab != "recipe-chat-tab":
+        return dash.no_update
+    items = get_vegetables_and_meat()
+    if not items:
+        return html.Div("No vegetables or meat in your fridge yet.", className="no-ingredients")
+    sorted_items = sorted(items, key=lambda x: x.freshness_percentage)
+    return [create_ingredient_item(item) for item in sorted_items]
+
+
+@callback(
+    Output("chat-messages", "children"),
+    [Input("main-tabs", "value")],
+    [State("chat-history", "data")]
+)
+def initialize_chat(tab, history):
+    """Initialize chat with welcome message when tab is opened."""
+    if tab != "recipe-chat-tab":
+        return dash.no_update
+    if not history:
+        welcome = chat_engine.get_welcome_message()
+        return [html.Div(className="chat-message bot", children=[
+            html.Span("🤖", className="message-avatar"),
+            html.Div(welcome, className="message-content")
+        ])]
+    return render_chat_messages(history)
+
+
+def render_chat_messages(history):
+    """Render chat history as HTML components."""
+    messages = []
+    for msg in history:
+        if msg["role"] == "user":
+            messages.append(html.Div(className="chat-message user", children=[
+                html.Div(msg["content"], className="message-content"),
+                html.Span("👤", className="message-avatar")
+            ]))
+        else:
+            messages.append(html.Div(className="chat-message bot", children=[
+                html.Span("🤖", className="message-avatar"),
+                html.Div(msg["content"], className="message-content")
+            ]))
+    return messages
+
+
+@callback(
+    [Output("chat-messages", "children", allow_duplicate=True),
+     Output("chat-history", "data"),
+     Output("chat-input", "value")],
+    [Input("chat-send-btn", "n_clicks"), Input("chat-input", "n_submit")],
+    [State("chat-input", "value"), State("chat-history", "data"), State("use-recipes-doc", "value")],
+    prevent_initial_call=True
+)
+def handle_chat_message(n_clicks, n_submit, message, history, use_recipes):
+    """Handle sending a chat message."""
+    if not message or not message.strip():
+        return dash.no_update, dash.no_update, dash.no_update
+    
+    message = message.strip()
+    use_doc = "yes" in (use_recipes or [])
+    
+    if not history:
+        history = [{"role": "assistant", "content": chat_engine.get_welcome_message()}]
+    
+    history.append({"role": "user", "content": message})
+    response = chat_engine.generate_response(message, use_recipes_doc=use_doc)
+    history.append({"role": "assistant", "content": response})
+    
+    return render_chat_messages(history), history, ""
+
+
 @callback(
     Output("tab-content", "children"),
     Input("main-tabs", "value")
@@ -581,6 +727,8 @@ def render_tab_content(tab):
         return create_food_tab_content()
     elif tab == "shopping-tab":
         return create_shopping_tab_content()
+    elif tab == "recipe-chat-tab":
+        return create_recipe_chat_content()
     return html.Div()
 
 
