@@ -58,6 +58,15 @@ def format_ingredients_for_prompt(items: List[FridgeItem]) -> str:
     return "\n".join(lines)
 
 
+def get_items_by_ids(item_ids: List[int]) -> List[FridgeItem]:
+    """Get fridge items by their IDs, filtered to produce and meat only."""
+    all_items = db.get_all_items()
+    return [
+        item for item in all_items
+        if item.id in item_ids and item.category in ('produce', 'meat')
+    ]
+
+
 # Path to the cooking history markdown file
 COOKING_HISTORY_PATH = Path(__file__).parent.parent / "data" / "cooking_history.md"
 
@@ -162,13 +171,20 @@ class RecipeChatEngine:
         msg += "\n\nLet me suggest a few things you can make..."
         return msg
     
-    def get_initial_suggestions_prompt(self) -> Optional[str]:
+    def get_initial_suggestions_prompt(self, selected_item_ids: Optional[List[int]] = None) -> Optional[str]:
         """
         Build a prompt for initial recipe suggestions based on available ingredients
         and the user's cooking history.
         Returns None if no ingredients are available.
+        
+        Args:
+            selected_item_ids: If provided, only use items with these IDs.
+                             If None, use all vegetables and meat items.
         """
-        items = get_vegetables_and_meat()
+        if selected_item_ids is not None:
+            items = get_items_by_ids(selected_item_ids)
+        else:
+            items = get_vegetables_and_meat()
         
         if not items:
             return None
@@ -198,6 +214,55 @@ Suggest 2-3 quick recipe ideas I could make. For each suggestion:
 - Consider my cooking history and preferences when making suggestions
 
 Keep it concise - just the highlights. I can ask for more details on any recipe I'm interested in."""
+        
+        return prompt
+    
+    def get_top5_prompt(self, selected_item_ids: Optional[List[int]] = None) -> Optional[str]:
+        """
+        Build a prompt for top 5 recipe suggestions based on selected ingredients.
+        
+        Args:
+            selected_item_ids: If provided, only use items with these IDs.
+                             If None, use all vegetables and meat items.
+        Returns None if no ingredients are available.
+        """
+        if selected_item_ids is not None:
+            items = get_items_by_ids(selected_item_ids)
+        else:
+            items = get_vegetables_and_meat()
+        
+        if not items:
+            return None
+        
+        ingredients_text = format_ingredients_for_prompt(items)
+        
+        # Load cooking history for personalized suggestions
+        cooking_history = load_cooking_history()
+        history_section = ""
+        if cooking_history:
+            history_section = f"""
+Here's my cooking history and preferences:
+
+{cooking_history}
+
+"""
+        
+        # Build a prompt that asks for top 5 suggestions
+        prompt = f"""Based on these ingredients I have:
+
+{ingredients_text}
+{history_section}
+Give me the TOP 5 things I can make with these ingredients. For each dish:
+1. **Name** - a brief, appetizing name
+2. **Ingredients used** - which of my ingredients it uses
+3. **Quick tip** - one sentence on why it's a good choice (e.g., uses expiring items, quick to make, etc.)
+
+Prioritize dishes that:
+- Use items that are expiring soon (marked with ⚠️)
+- Can be made primarily with the ingredients I have
+- Match my cooking preferences if known
+
+Number them 1-5. Keep descriptions brief!"""
         
         return prompt
     

@@ -1908,3 +1908,153 @@ details[open] .ingredients-header::before {
     opacity: 0.8;
 }
 
+
+/* ============================================================================
+   Ingredient Selection Styles for Recipe Chat
+   ============================================================================ */
+
+.ingredients-sidebar-expanded {
+    display: flex;
+    flex-direction: column;
+    min-width: 280px;
+    max-width: 320px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 12px;
+    padding: 16px;
+    margin-right: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    max-height: calc(100vh - 200px);
+    overflow: hidden;
+}
+
+.ingredients-sidebar-expanded .ingredients-header {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.ingredient-selection-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.ingredient-control-btn {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: white;
+    color: #495057;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ingredient-control-btn:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+}
+
+.ingredient-control-btn:active {
+    background: #dee2e6;
+}
+
+.ingredients-sidebar-expanded .ingredients-list {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 12px;
+    padding-right: 4px;
+}
+
+.ingredient-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ingredient-checkbox-label {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    background: white;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.ingredient-checkbox-label:hover {
+    background: #f1f3f4;
+    border-color: #dee2e6;
+}
+
+.ingredient-checkbox-input {
+    margin-right: 10px;
+    width: 18px;
+    height: 18px;
+    accent-color: #28a745;
+    cursor: pointer;
+}
+
+.quick-actions {
+    padding-top: 12px;
+    border-top: 2px solid #dee2e6;
+}
+
+.top5-btn {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+.top5-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #218838 0%, #1aa179 100%);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+    transform: translateY(-1px);
+}
+
+.top5-btn:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(40, 167, 69, 0.3);
+}
+
+.top5-btn:disabled {
+    background: #adb5bd;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* Mobile responsive for ingredient sidebar */
+@media (max-width: 768px) {
+    .ingredients-sidebar-expanded {
+        min-width: 100%;
+        max-width: 100%;
+        margin-right: 0;
+        margin-bottom: 16px;
+        max-height: 300px;
+    }
+    
+    .ingredient-selection-controls {
+        flex-wrap: wrap;
+    }
+    
+    .ingredient-control-btn {
+        flex: 1 1 45%;
+    }
+}
+
