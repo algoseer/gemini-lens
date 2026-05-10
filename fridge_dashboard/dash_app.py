@@ -229,17 +229,24 @@ def create_empty_state() -> html.Div:
 
 
 def create_compact_food_badge(item: FridgeItem) -> html.Div:
-    """Create a compact badge for a food item."""
+    """Create a compact badge for a food item that opens edit modal on click."""
     status_class = get_status_class(item.freshness_percentage)
     days_text = f"{item.days_remaining}d" if item.days_remaining >= 0 else "Exp"
     
     return html.Div(
         className=f"food-badge {status_class}",
-        id={"type": "food-badge", "index": item.id},
         children=[
-            html.Span(item.status_emoji, className="food-badge-emoji"),
-            html.Span(item.name, className="food-badge-name"),
-            html.Span(days_text, className=f"food-badge-days {status_class}"),
+            # Clickable area for opening edit modal
+            html.Div(
+                className="food-badge-clickable",
+                id={"type": "food-badge-click", "index": item.id},
+                n_clicks=0,
+                children=[
+                    html.Span(item.status_emoji, className="food-badge-emoji"),
+                    html.Span(item.name, className="food-badge-name"),
+                    html.Span(days_text, className=f"food-badge-days {status_class}"),
+                ]
+            ),
             html.Button(
                 "×",
                 className="food-badge-delete",
@@ -517,6 +524,36 @@ app.layout = html.Div([
     dcc.Store(id="refresh-trigger", data=0),
     dcc.Store(id="shopping-refresh-trigger", data=0),
     dcc.Store(id="chat-history", data=[]),
+    dcc.Store(id="edit-item-id", data=None),  # Store for tracking which item is being edited
+    
+    # Edit Item Modal
+    html.Div(
+        id="edit-modal-overlay",
+        className="edit-modal-overlay",
+        style={"display": "none"},
+        children=[
+            html.Div(
+                className="edit-modal",
+                children=[
+                    html.Div(
+                        className="edit-modal-header",
+                        children=[
+                            html.H3("✏️ Edit Item", className="edit-modal-title"),
+                            html.Button("×", id="edit-modal-close", className="edit-modal-close-btn", n_clicks=0)
+                        ]
+                    ),
+                    html.Div(id="edit-modal-body", className="edit-modal-body"),
+                    html.Div(
+                        className="edit-modal-footer",
+                        children=[
+                            html.Button("Cancel", id="edit-modal-cancel", className="edit-modal-btn edit-modal-btn-cancel", n_clicks=0),
+                            html.Button("Save Changes", id="edit-modal-save", className="edit-modal-btn edit-modal-btn-save", n_clicks=0)
+                        ]
+                    )
+                ]
+            )
+        ]
+    ),
     
     # Interval for auto-refresh (every 60 seconds)
     dcc.Interval(
@@ -1221,6 +1258,144 @@ def delete_item(n_clicks, current_trigger):
     db.delete_item(item_id)
     
     return current_trigger + 1
+
+
+# ============================================================================
+# Edit Modal Callbacks
+# ============================================================================
+
+def create_edit_modal_body(item: FridgeItem) -> html.Div:
+    """Create the body content for the edit modal."""
+    return html.Div([
+        html.Div(className="edit-form-group", children=[
+            html.Label("Name", className="edit-form-label"),
+            dcc.Input(id="edit-item-name", type="text", value=item.name,
+                      className="edit-form-input", placeholder="Item name")
+        ]),
+        html.Div(className="edit-form-group", children=[
+            html.Label("Shelf Life (days)", className="edit-form-label"),
+            html.Div(className="edit-shelf-life-control", children=[
+                html.Button("−", id="edit-shelf-down", className="edit-shelf-btn", n_clicks=0),
+                dcc.Input(id="edit-item-shelf-life", type="number", value=item.shelf_life_days,
+                          className="edit-shelf-input", min=1, max=365),
+                html.Button("+", id="edit-shelf-up", className="edit-shelf-btn", n_clicks=0)
+            ])
+        ]),
+        html.Div(className="edit-form-group", children=[
+            html.Label("Remaining", className="edit-form-label"),
+            html.Div(f"{item.remaining_percentage}%", className="edit-remaining-display", id="edit-remaining-display"),
+            dcc.Slider(id="edit-item-remaining", min=0, max=100, step=10, value=item.remaining_percentage,
+                       marks={0: '0%', 50: '50%', 100: '100%'}, className="edit-remaining-slider")
+        ]),
+        html.Div(className="edit-form-group", children=[
+            html.Label("Storage Location", className="edit-form-label"),
+            dcc.Dropdown(id="edit-item-storage", options=[
+                {"label": "🧊 Fridge", "value": "fridge"}, {"label": "❄️ Freezer", "value": "freezer"},
+                {"label": "🗄️ Pantry", "value": "pantry"}, {"label": "🍎 Counter", "value": "counter"}
+            ], value=item.storage_location, className="edit-storage-dropdown", clearable=False)
+        ]),
+        html.Div(className="edit-item-info", children=[
+            html.Div([html.Span(item.status_emoji, style={"marginRight": "8px"}),
+                      html.Span(item.status_text, className=f"status-badge {get_status_class(item.freshness_percentage)}")]),
+            html.Div(f"Purchased: {item.purchase_date.strftime('%b %d, %Y')}", className="edit-info-text"),
+            html.Div(f"Days remaining: {item.days_remaining}", className="edit-info-text"),
+            html.Div(f"Category: {item.category or 'Other'}", className="edit-info-text")
+        ])
+    ])
+
+
+@callback(
+    [Output("edit-modal-overlay", "style"),
+     Output("edit-modal-body", "children"),
+     Output("edit-item-id", "data")],
+    Input({"type": "food-badge-click", "index": ALL}, "n_clicks"),
+    prevent_initial_call=True
+)
+def open_edit_modal(n_clicks):
+    """Open the edit modal when a food badge is clicked."""
+    if not ctx.triggered_id or not any(n_clicks):
+        return dash.no_update, dash.no_update, dash.no_update
+    
+    item_id = ctx.triggered_id["index"]
+    item = db.get_item_by_id(item_id)
+    
+    if not item:
+        return dash.no_update, dash.no_update, dash.no_update
+    
+    return {"display": "flex"}, create_edit_modal_body(item), item_id
+
+
+@callback(
+    Output("edit-modal-overlay", "style", allow_duplicate=True),
+    [Input("edit-modal-close", "n_clicks"),
+     Input("edit-modal-cancel", "n_clicks")],
+    prevent_initial_call=True
+)
+def close_edit_modal(close_clicks, cancel_clicks):
+    """Close the edit modal."""
+    if not ctx.triggered_id:
+        return dash.no_update
+    return {"display": "none"}
+
+
+@callback(
+    Output("edit-remaining-display", "children"),
+    Input("edit-item-remaining", "value"),
+    prevent_initial_call=True
+)
+def update_remaining_display(value):
+    """Update the remaining percentage display."""
+    if value is None:
+        return dash.no_update
+    return f"{value}%"
+
+
+@callback(
+    Output("edit-item-shelf-life", "value"),
+    [Input("edit-shelf-up", "n_clicks"),
+     Input("edit-shelf-down", "n_clicks")],
+    State("edit-item-shelf-life", "value"),
+    prevent_initial_call=True
+)
+def update_shelf_life_in_modal(up_clicks, down_clicks, current_value):
+    """Update shelf life value when +/- buttons are clicked."""
+    if not ctx.triggered_id or current_value is None:
+        return dash.no_update
+    
+    if ctx.triggered_id == "edit-shelf-up":
+        return min(365, current_value + 1)
+    elif ctx.triggered_id == "edit-shelf-down":
+        return max(1, current_value - 1)
+    return dash.no_update
+
+
+@callback(
+    [Output("edit-modal-overlay", "style", allow_duplicate=True),
+     Output("refresh-trigger", "data", allow_duplicate=True)],
+    Input("edit-modal-save", "n_clicks"),
+    [State("edit-item-id", "data"),
+     State("edit-item-name", "value"),
+     State("edit-item-shelf-life", "value"),
+     State("edit-item-remaining", "value"),
+     State("edit-item-storage", "value"),
+     State("refresh-trigger", "data")],
+    prevent_initial_call=True
+)
+def save_edit_modal(n_clicks, item_id, name, shelf_life, remaining, storage, current_trigger):
+    """Save the edited item and close the modal."""
+    if not n_clicks or not item_id:
+        return dash.no_update, dash.no_update
+    
+    # Update the item in the database
+    db.update_item(
+        item_id,
+        name=name.strip() if name else None,
+        shelf_life_days=shelf_life,
+        remaining_percentage=remaining,
+        storage_location=storage
+    )
+    
+    return {"display": "none"}, current_trigger + 1
 
 
 @callback(
