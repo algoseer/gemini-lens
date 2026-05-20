@@ -525,6 +525,7 @@ app.layout = html.Div([
     dcc.Store(id="shopping-refresh-trigger", data=0),
     dcc.Store(id="chat-history", data=[]),
     dcc.Store(id="edit-item-id", data=None),  # Store for tracking which item is being edited
+    dcc.Store(id="pending-scanned-items", data=None),  # Store for pending items before confirmation
     
     # Edit Item Modal
     html.Div(
@@ -1131,8 +1132,14 @@ def create_debug_panel(debug_info: Dict[str, Any]) -> html.Div:
     )
 
 
-def create_parsing_results_table(fridge_items: List[FridgeItem]) -> html.Div:
-    """Create a detailed results table showing parsed items."""
+def create_parsing_results_table(fridge_items: List[FridgeItem], scanned_date: date, is_date_extracted: bool) -> html.Div:
+    """Create a detailed results table showing parsed items with editable date.
+    
+    Args:
+        fridge_items: List of parsed FridgeItem objects
+        scanned_date: The date extracted or used for the scan
+        is_date_extracted: True if date was extracted from receipt, False if fallback was used
+    """
     if not fridge_items:
         return html.Div()
     
@@ -1155,10 +1162,47 @@ def create_parsing_results_table(fridge_items: List[FridgeItem]) -> html.Div:
             ])
         )
     
+    # Date source indicator
+    if is_date_extracted:
+        date_source_text = "📅 Date extracted from receipt"
+        date_source_class = "date-extracted"
+    else:
+        date_source_text = "📅 Using fallback date"
+        date_source_class = "date-fallback"
+    
     return html.Div(
         className="parsing-results",
         children=[
-            html.H4("📋 Parsed Items", style={"marginBottom": "15px", "color": "#333"}),
+            html.H4("📋 Scanned Items", style={"marginBottom": "15px", "color": "#333"}),
+            
+            # Editable date section
+            html.Div(
+                className="scanned-date-section",
+                children=[
+                    html.Div(
+                        className=f"date-source-indicator {date_source_class}",
+                        children=[date_source_text]
+                    ),
+                    html.Div(
+                        className="scanned-date-editor",
+                        children=[
+                            html.Label("Purchase Date:", className="scanned-date-label"),
+                            dcc.DatePickerSingle(
+                                id="scanned-date-picker",
+                                date=scanned_date,
+                                display_format="MMM D, YYYY",
+                                className="scanned-date-input"
+                            ),
+                            html.Span(
+                                "You can update the date before saving",
+                                className="scanned-date-hint"
+                            )
+                        ]
+                    )
+                ]
+            ),
+            
+            # Items table
             html.Table(
                 className="results-table",
                 children=[
@@ -1173,6 +1217,25 @@ def create_parsing_results_table(fridge_items: List[FridgeItem]) -> html.Div:
                     ),
                     html.Tbody(rows)
                 ]
+            ),
+            
+            # Confirm button
+            html.Div(
+                className="scanned-items-actions",
+                children=[
+                    html.Button(
+                        "✓ Confirm & Save Items",
+                        id="confirm-scanned-items-btn",
+                        className="confirm-scanned-btn",
+                        n_clicks=0
+                    ),
+                    html.Button(
+                        "✗ Discard",
+                        id="discard-scanned-items-btn",
+                        className="discard-scanned-btn",
+                        n_clicks=0
+                    )
+                ]
             )
         ]
     )
@@ -1180,16 +1243,15 @@ def create_parsing_results_table(fridge_items: List[FridgeItem]) -> html.Div:
 
 @callback(
     [Output("upload-status", "children"),
-     Output("refresh-trigger", "data"),
+     Output("pending-scanned-items", "data"),
      Output("alert-container", "children")],
     [Input("upload-receipt", "contents")],
     [State("upload-receipt", "filename"),
-     State("purchase-date-picker", "date"),
-     State("refresh-trigger", "data")],
+     State("purchase-date-picker", "date")],
     prevent_initial_call=True
 )
-def process_receipt(contents, filename, purchase_date_str, current_trigger):
-    """Process uploaded receipt image."""
+def process_receipt(contents, filename, purchase_date_str):
+    """Process uploaded receipt image and store items for confirmation."""
     if contents is None:
         return dash.no_update, dash.no_update, dash.no_update
     
@@ -1255,12 +1317,135 @@ def process_receipt(contents, filename, purchase_date_str, current_trigger):
                     "Make sure the image is clear and contains grocery items."
                 ]
             )
-            return status, current_trigger, alert
+            return status, None, alert
         
-        # Add items to database
+        # Determine which date was used for scanned items
+        is_date_extracted = extracted_date is not None
+        scanned_date = extracted_date if extracted_date else fallback_date
+        
+        # DON'T save items yet - store them as pending for user to review and confirm
+        # Convert items to serializable format for storage
+        pending_items_data = {
+            "items": [item.to_dict() for item in fridge_items],
+            "scanned_date": scanned_date.isoformat(),
+            "is_date_extracted": is_date_extracted,
+            "debug_info": debug_info
+        }
+        
+        # Create progress display with results (items not saved yet)
+        status = html.Div([
+            html.Div(
+                className="progress-container",
+                children=[
+                    html.Div(
+                        className="progress-step completed",
+                        children=[
+                            html.Span("✓", className="step-icon"),
+                            html.Span("Image uploaded", className="step-text")
+                        ]
+                    ),
+                    html.Div(
+                        className="progress-step completed",
+                        children=[
+                            html.Span("✓", className="step-icon"),
+                            html.Span(f"Found {len(fridge_items)} food items", className="step-text")
+                        ]
+                    ),
+                    html.Div(
+                        className="progress-step completed",
+                        children=[
+                            html.Span("✓", className="step-icon"),
+                            html.Span("Shelf life estimates retrieved", className="step-text")
+                        ]
+                    ),
+                    html.Div(
+                        className="progress-step pending",
+                        children=[
+                            html.Span("⏳", className="step-icon"),
+                            html.Span("Awaiting confirmation", className="step-text")
+                        ]
+                    )
+                ]
+            ),
+            # Show detailed results table with editable date and confirm/discard buttons
+            create_parsing_results_table(fridge_items, scanned_date, is_date_extracted),
+            # Debug panel (collapsible)
+            create_debug_panel(debug_info)
+        ])
+        
+        # Info alert prompting user to confirm
+        alert = html.Div(
+            className="alert alert-info",
+            children=[
+                f"📋 Found {len(fridge_items)} items. Review the date and click 'Confirm & Save' to add them to your food tracker."
+            ]
+        )
+        
+        return status, pending_items_data, alert
+        
+    except Exception as e:
+        # Error state
+        status = html.Div(
+            className="progress-container",
+            children=[
+                html.Div(
+                    className="progress-step completed",
+                    children=[
+                        html.Span("✓", className="step-icon"),
+                        html.Span("Image uploaded", className="step-text")
+                    ]
+                ),
+                html.Div(
+                    className="progress-step error",
+                    children=[
+                        html.Span("✗", className="step-icon"),
+                        html.Span("Processing failed", className="step-text")
+                    ]
+                )
+            ]
+        )
+        alert = html.Div(
+            className="alert alert-error",
+            children=[f"❌ Error processing receipt: {str(e)}"]
+        )
+        return status, None, alert
+
+
+@callback(
+    [Output("upload-status", "children", allow_duplicate=True),
+     Output("pending-scanned-items", "data", allow_duplicate=True),
+     Output("refresh-trigger", "data"),
+     Output("alert-container", "children", allow_duplicate=True)],
+    [Input("confirm-scanned-items-btn", "n_clicks")],
+    [State("pending-scanned-items", "data"),
+     State("scanned-date-picker", "date"),
+     State("refresh-trigger", "data")],
+    prevent_initial_call=True
+)
+def confirm_scanned_items(n_clicks, pending_data, updated_date_str, current_trigger):
+    """Confirm and save the scanned items with the (possibly updated) date."""
+    if not n_clicks or not pending_data:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    
+    try:
+        # Parse the updated date
+        if updated_date_str:
+            updated_date = datetime.fromisoformat(updated_date_str).date()
+        else:
+            updated_date = datetime.fromisoformat(pending_data["scanned_date"]).date()
+        
+        # Reconstruct FridgeItem objects with the updated date
+        fridge_items = []
+        for item_data in pending_data["items"]:
+            item = FridgeItem.from_dict(item_data)
+            # Update the purchase date to the user-selected date
+            item.purchase_date = updated_date
+            fridge_items.append(item)
+        
+        # Now save items to database
         db.add_items(fridge_items)
         
-        # Create completed progress display with results
+        # Create success status
         status = html.Div([
             html.Div(
                 className="progress-container",
@@ -1295,57 +1480,57 @@ def process_receipt(contents, filename, purchase_date_str, current_trigger):
                     )
                 ]
             ),
-            # Show extracted date info
+            # Show confirmed message
             html.Div(
-                className=f"date-info {date_class}",
-                children=[date_source]
-            ),
-            # Show detailed results table
-            create_parsing_results_table(fridge_items),
-            # Debug panel (collapsible)
-            create_debug_panel(debug_info)
+                className="date-info date-extracted",
+                children=[f"📅 Items saved with date: {updated_date.strftime('%b %d, %Y')}"]
+            )
         ])
         
-        # Success alert with date info
+        # Success alert
         total_cost = sum(item.cost or 0 for item in fridge_items)
         cost_text = f" (Total: ${total_cost:.2f})" if total_cost > 0 else ""
-        date_info = f" • Date: {fridge_items[0].purchase_date.strftime('%b %d, %Y')}" if fridge_items else ""
         
         alert = html.Div(
             className="alert alert-success",
             children=[
-                f"✅ Successfully added {len(fridge_items)} items to your fridge{cost_text}{date_info}"
+                f"✅ Successfully added {len(fridge_items)} items to your food tracker{cost_text}"
             ]
         )
         
-        return status, current_trigger + 1, alert
+        # Clear pending items and trigger refresh
+        return status, None, current_trigger + 1, alert
         
     except Exception as e:
-        # Error state
-        status = html.Div(
-            className="progress-container",
-            children=[
-                html.Div(
-                    className="progress-step completed",
-                    children=[
-                        html.Span("✓", className="step-icon"),
-                        html.Span("Image uploaded", className="step-text")
-                    ]
-                ),
-                html.Div(
-                    className="progress-step error",
-                    children=[
-                        html.Span("✗", className="step-icon"),
-                        html.Span("Processing failed", className="step-text")
-                    ]
-                )
-            ]
-        )
         alert = html.Div(
             className="alert alert-error",
-            children=[f"❌ Error processing receipt: {str(e)}"]
+            children=[f"❌ Error saving items: {str(e)}"]
         )
-        return status, current_trigger, alert
+        return dash.no_update, dash.no_update, dash.no_update, alert
+
+
+@callback(
+    [Output("upload-status", "children", allow_duplicate=True),
+     Output("pending-scanned-items", "data", allow_duplicate=True),
+     Output("alert-container", "children", allow_duplicate=True)],
+    [Input("discard-scanned-items-btn", "n_clicks")],
+    [State("pending-scanned-items", "data")],
+    prevent_initial_call=True
+)
+def discard_scanned_items(n_clicks, pending_data):
+    """Discard the scanned items without saving."""
+    if not n_clicks or not pending_data:
+        return dash.no_update, dash.no_update, dash.no_update
+    
+    # Clear the status and pending items
+    status = html.Div()
+    
+    alert = html.Div(
+        className="alert alert-info",
+        children=["ℹ️ Scanned items discarded. Upload another receipt to try again."]
+    )
+    
+    return status, None, alert
 
 
 @callback(

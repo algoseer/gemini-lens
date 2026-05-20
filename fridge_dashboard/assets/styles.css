@@ -632,6 +632,111 @@ body {
     border: 1px solid #ffc107;
 }
 
+/* ============================================================================
+   Scanned Items Date Editor Section
+   ============================================================================ */
+
+.scanned-date-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    border-radius: 10px;
+    border: 1px solid #90caf9;
+}
+
+.date-source-indicator {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 12px;
+    display: inline-block;
+}
+
+.date-source-indicator.date-extracted {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #28a745;
+}
+
+.date-source-indicator.date-fallback {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffc107;
+}
+
+.scanned-date-editor {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.scanned-date-label {
+    font-weight: 600;
+    color: #1565c0;
+    font-size: 0.95rem;
+}
+
+.scanned-date-input {
+    flex-shrink: 0;
+}
+
+.scanned-date-hint {
+    font-size: 0.85rem;
+    color: #666;
+    font-style: italic;
+}
+
+/* Scanned Items Actions (Confirm/Discard buttons) */
+.scanned-items-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px dashed #e0e0e0;
+}
+
+.confirm-scanned-btn {
+    flex: 1;
+    padding: 14px 24px;
+    font-size: 1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+}
+
+.confirm-scanned-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+}
+
+.confirm-scanned-btn:active {
+    transform: translateY(0);
+}
+
+.discard-scanned-btn {
+    padding: 14px 24px;
+    font-size: 1rem;
+    font-weight: 600;
+    border: 2px solid #dc3545;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: white;
+    color: #dc3545;
+}
+
+.discard-scanned-btn:hover {
+    background: #dc3545;
+    color: white;
+}
+
 /* Debug Panel */
 .debug-panel {
     margin-top: 20px;
