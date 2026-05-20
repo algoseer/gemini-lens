@@ -13,7 +13,7 @@ import dash_bootstrap_components as dbc
 from . import database as db
 from .models import FridgeItem, PurchaseHistoryItem, ShoppingListItem, STORAGE_LOCATIONS, STORAGE_DISPLAY_NAMES
 from .gemini_service import process_receipt_to_fridge_items
-from .recipe_chat_service import RecipeChatEngine, get_vegetables_and_meat, get_items_by_ids
+from .recipe_chat_service import RecipeChatEngine
 
 # Check if debug mode is enabled via environment variable
 DEBUG_MODE = os.environ.get("DEBUG_MODE", "false").lower() in ("true", "1", "yes")
@@ -512,8 +512,7 @@ app.layout = html.Div([
         className="main-tabs",
         children=[
             dcc.Tab(label="🍎 My Food", value="food-tab", className="main-tab"),
-            dcc.Tab(label="🛒 Shopping List", value="shopping-tab", className="main-tab"),
-            dcc.Tab(label="🍳 Recipe Chat", value="recipe-chat-tab", className="main-tab"),
+            dcc.Tab(label="🍳 Kitchen Assistant", value="kitchen-assistant-tab", className="main-tab"),
         ]
     ),
     
@@ -526,6 +525,7 @@ app.layout = html.Div([
     dcc.Store(id="chat-history", data=[]),
     dcc.Store(id="edit-item-id", data=None),  # Store for tracking which item is being edited
     dcc.Store(id="pending-scanned-items", data=None),  # Store for pending items before confirmation
+    dcc.Store(id="selected-ingredients", data=[]),  # Store for selected ingredient IDs
     
     # Edit Item Modal
     html.Div(
@@ -625,151 +625,118 @@ def create_food_tab_content():
     ])
 
 
-def create_shopping_tab_content():
-    """Create the content for the Shopping List tab."""
-    return html.Div(
-        className="shopping-tab-content",
-        children=[
-            html.Div(
-                className="shopping-columns",
-                children=[
-                    html.Div(
-                        className="shopping-column suggestions-column",
-                        children=[
-                            html.H3("💡 Suggested Items"),
-                            html.P("Items you've bought before but aren't in your fridge", className="column-description"),
-                            html.Div(id="suggestions-container")
-                        ]
-                    ),
-                    html.Div(
-                        className="shopping-column list-column",
-                        children=[
-                            html.H3("📝 Your List"),
-                            html.Div(
-                                className="list-actions",
-                                children=[
-                                    html.Button("Clear Checked", id="clear-checked-btn", className="action-btn secondary", n_clicks=0),
-                                    html.Button("Clear All", id="clear-all-btn", className="action-btn danger", n_clicks=0)
-                                ]
-                            ),
-                            html.Div(id="shopping-list-container"),
-                            html.Div(
-                                className="add-item-form",
-                                children=[
-                                    html.H4("Add Item Manually"),
-                                    html.Div(
-                                        className="form-row",
-                                        children=[
-                                            dcc.Input(id="new-item-name", type="text", placeholder="Item name", className="form-input"),
-                                            dcc.Dropdown(
-                                                id="new-item-storage",
-                                                options=[{"label": STORAGE_DISPLAY_NAMES[loc], "value": loc} for loc in STORAGE_LOCATIONS],
-                                                value="fridge",
-                                                className="form-dropdown",
-                                                clearable=False
-                                            ),
-                                            html.Button("Add", id="add-manual-item-btn", className="action-btn primary", n_clicks=0)
-                                        ]
-                                    )
-                                ]
-                            )
-                        ]
-                    )
-                ]
-            ),
-            html.Div(id="suppressed-container"),
-        ]
-    )
-
-
-def create_recipe_chat_content():
-    """Create the content for the Recipe Chat tab."""
-    # Get all available vegetables and meat
-    items = get_vegetables_and_meat()
+def create_kitchen_assistant_content():
+    """Create the content for the Kitchen Assistant tab."""
+    # Get ALL fridge items, not just vegetables/meat
+    all_items = db.get_all_items()
     
-    # Create ingredient checkboxes
+    # Sort by freshness (expiring first)
+    items_sorted = sorted(all_items, key=lambda x: x.freshness_percentage)
+    
+    # Create ingredient checkboxes with expiring items highlighted
     ingredient_options = []
-    for item in sorted(items, key=lambda x: x.freshness_percentage):
-        status_emoji = "⚠️" if item.freshness_percentage < 30 else ("🟡" if item.freshness_percentage < 60 else "🟢")
+    for item in items_sorted:
+        # Highlight expiring items more prominently
+        if item.freshness_percentage < 30:
+            status_emoji = "🔴"
+        elif item.freshness_percentage < 60:
+            status_emoji = "🟡"
+        else:
+            status_emoji = "🟢"
+        
+        days_text = f"{item.days_remaining}d" if item.days_remaining >= 0 else "Exp"
         ingredient_options.append({
-            "label": f"{status_emoji} {item.name} ({item.days_remaining}d)",
+            "label": f"{status_emoji} {item.name} ({days_text})",
             "value": item.id
         })
     
-    # Default: select all items
-    default_selected = [item.id for item in items]
+    # Default: select items that are expiring or need to be used soon (< 60% freshness)
+    default_selected = [item.id for item in all_items if item.freshness_percentage < 60]
+    # If nothing is expiring, select all
+    if not default_selected:
+        default_selected = [item.id for item in all_items]
     
+    # Count expiring items for display
+    expiring_count = len([i for i in all_items if i.freshness_percentage < 30])
+    use_soon_count = len([i for i in all_items if 30 <= i.freshness_percentage < 60])
+
     return html.Div(
-        className="recipe-chat-container",
+        className="kitchen-assistant-container",
         children=[
-            # Ingredient Selection Sidebar
+            # Left Sidebar - Item Selection
             html.Div(
-                className="ingredients-sidebar ingredients-sidebar-expanded",
+                className="items-sidebar",
                 children=[
                     html.Div(
-                        className="ingredients-header",
-                        children="🥗 Select Ingredients"
-                    ),
-                    # Select All / None buttons
-                    html.Div(
-                        className="ingredient-selection-controls",
+                        className="sidebar-header",
                         children=[
-                            html.Button(
-                                "Select All",
-                                id="select-all-ingredients",
-                                className="ingredient-control-btn",
-                                n_clicks=0
-                            ),
-                            html.Button(
-                                "Select None",
-                                id="select-none-ingredients",
-                                className="ingredient-control-btn",
-                                n_clicks=0
-                            ),
+                            html.H3("🧊 My Items"),
+                            html.Div(
+                                className="item-counts",
+                                children=[
+                                    html.Span(f"{len(all_items)} items", className="total-count"),
+                                    html.Span(f"🔴 {expiring_count}", className="expiring-count") if expiring_count > 0 else None,
+                                    html.Span(f"🟡 {use_soon_count}", className="use-soon-count") if use_soon_count > 0 else None,
+                                ]
+                            )
                         ]
                     ),
-                    # Ingredient checklist
+                    # Select All / None / Expiring buttons
                     html.Div(
-                        className="ingredients-list",
+                        className="selection-controls",
+                        children=[
+                            html.Button("All", id="select-all-items", className="selection-btn", n_clicks=0),
+                            html.Button("None", id="select-none-items", className="selection-btn", n_clicks=0),
+                            html.Button("🔴 Expiring", id="select-expiring-items", className="selection-btn highlight", n_clicks=0),
+                        ]
+                    ),
+                    # Item checklist
+                    html.Div(
+                        className="items-checklist-container",
                         children=[
                             dcc.Checklist(
-                                id="ingredient-checklist",
+                                id="kitchen-items-checklist",
                                 options=ingredient_options,
                                 value=default_selected,
-                                className="ingredient-checklist",
-                                labelClassName="ingredient-checkbox-label",
-                                inputClassName="ingredient-checkbox-input"
+                                className="kitchen-items-checklist",
+                                labelClassName="kitchen-item-checkbox-label",
+                                inputClassName="kitchen-item-checkbox-input"
                             ) if ingredient_options else html.Div(
-                                "No vegetables or meat available.",
-                                className="no-ingredients"
+                                children=[
+                                    html.Div("🍎", className="empty-icon"),
+                                    html.P("No items in your kitchen yet!"),
+                                    html.P("Upload a receipt on the My Food tab to get started.", className="empty-hint")
+                                ],
+                                className="no-items-message"
                             )
                         ]
                     ),
-                    # Quick action button
-                    html.Div(
-                        className="quick-actions",
-                        children=[
-                            html.Button(
-                                "🍳 Top 5 things I can make",
-                                id="top5-btn",
-                                className="top5-btn",
-                                n_clicks=0,
-                                disabled=len(items) == 0
-                            )
-                        ]
-                    )
                 ]
             ),
-            # Chat Area
+            # Right Side - Chat Area
             html.Div(
-                className="chat-area",
+                className="assistant-chat-area",
                 children=[
-                    html.Div(id="chat-messages", className="chat-messages"),
+                    # Quick Action Buttons
                     html.Div(
-                        className="chat-input-area",
+                        className="quick-actions-bar",
+                        children=[
+                            html.Button("🍳 Top 5 Recipes", id="quick-top5-btn", className="quick-action-btn primary", n_clicks=0, disabled=len(all_items) == 0),
+                            html.Button("⚠️ What's expiring?", id="quick-expiring-btn", className="quick-action-btn warning", n_clicks=0, disabled=len(all_items) == 0),
+                            html.Button("🥗 Meal prep ideas", id="quick-mealprep-btn", className="quick-action-btn", n_clicks=0, disabled=len(all_items) == 0),
+                            html.Button("🍲 Quick meal now", id="quick-now-btn", className="quick-action-btn", n_clicks=0, disabled=len(all_items) == 0),
+                        ]
+                    ),
+                    # Chat Messages
+                    html.Div(id="assistant-chat-messages", className="assistant-chat-messages"),
+                    # Dynamic prompt preview
+                    html.Div(id="dynamic-prompt-preview", className="dynamic-prompt-preview"),
+                    # Chat Input
+                    html.Div(
+                        className="assistant-input-area",
                         children=[
                             dcc.Checklist(
-                                id="use-recipes-doc",
+                                id="use-recipes-doc-assistant",
                                 options=[{"label": " Include my Recipes Doc", "value": "yes"}],
                                 value=[],
                                 className="recipes-doc-checkbox"
@@ -778,14 +745,14 @@ def create_recipe_chat_content():
                                 className="chat-input-row",
                                 children=[
                                     dcc.Input(
-                                        id="chat-input",
+                                        id="assistant-chat-input",
                                         type="text",
-                                        placeholder="What would you like to cook?",
+                                        placeholder="Ask about recipes, meal ideas, or how to use your ingredients...",
                                         className="chat-input",
                                         debounce=False,
                                         n_submit=0
                                     ),
-                                    html.Button("➤", id="chat-send-btn", className="chat-send-btn", n_clicks=0)
+                                    html.Button("➤", id="assistant-send-btn", className="chat-send-btn", n_clicks=0)
                                 ]
                             )
                         ]
@@ -793,14 +760,8 @@ def create_recipe_chat_content():
                 ]
             ),
             # Streaming components
-            dcc.Interval(
-                id="chat-stream-interval",
-                interval=100,  # Poll every 100ms
-                disabled=True,
-                n_intervals=0
-            ),
-            dcc.Store(id="streaming-state", data={"active": False, "pending_message": None, "use_doc": False}),
-            dcc.Store(id="selected-ingredients-store", data=default_selected)
+            dcc.Interval(id="assistant-stream-interval", interval=100, disabled=True, n_intervals=0),
+            dcc.Store(id="assistant-streaming-state", data={"active": False, "pending_message": None, "use_doc": False}),
         ]
     )
 
@@ -809,120 +770,185 @@ def create_recipe_chat_content():
 chat_engine = RecipeChatEngine()
 
 
+def get_all_items_by_ids(item_ids: List[int]) -> List[FridgeItem]:
+    """Get fridge items by their IDs (all categories)."""
+    all_items = db.get_all_items()
+    return [item for item in all_items if item.id in item_ids]
+
+
 @callback(
-    Output("ingredient-checklist", "value"),
-    [Input("select-all-ingredients", "n_clicks"),
-     Input("select-none-ingredients", "n_clicks")],
+    Output("kitchen-items-checklist", "value"),
+    [Input("select-all-items", "n_clicks"),
+     Input("select-none-items", "n_clicks"),
+     Input("select-expiring-items", "n_clicks")],
     prevent_initial_call=True
 )
-def handle_select_all_none(select_all, select_none):
-    """Handle Select All and Select None buttons for ingredient selection."""
+def handle_item_selection_buttons(select_all, select_none, select_expiring):
+    """Handle Select All, Select None, and Select Expiring buttons."""
     triggered = ctx.triggered_id
-    if triggered == "select-all-ingredients":
-        items = get_vegetables_and_meat()
-        return [item.id for item in items]
-    elif triggered == "select-none-ingredients":
+    all_items = db.get_all_items()
+    
+    if triggered == "select-all-items":
+        return [item.id for item in all_items]
+    elif triggered == "select-none-items":
         return []
+    elif triggered == "select-expiring-items":
+        return [item.id for item in all_items if item.freshness_percentage < 60]
     return dash.no_update
 
 
 @callback(
-    [Output("chat-messages", "children"),
-     Output("streaming-state", "data", allow_duplicate=True),
-     Output("chat-stream-interval", "disabled", allow_duplicate=True)],
+    Output("dynamic-prompt-preview", "children"),
+    Input("kitchen-items-checklist", "value"),
+    prevent_initial_call=False
+)
+def update_dynamic_prompt_preview(selected_ids):
+    """Update the dynamic prompt preview based on selected items."""
+    if not selected_ids:
+        return html.Div("Select items from the list to get recipe suggestions", className="prompt-preview-empty")
+    
+    selected_items = get_all_items_by_ids(selected_ids)
+    if not selected_items:
+        return html.Div("Select items from the list to get recipe suggestions", className="prompt-preview-empty")
+    
+    selected_items.sort(key=lambda x: x.freshness_percentage)
+    expiring = [i for i in selected_items if i.freshness_percentage < 30]
+    use_soon = [i for i in selected_items if 30 <= i.freshness_percentage < 60]
+    fresh = [i for i in selected_items if i.freshness_percentage >= 60]
+    
+    preview_parts = []
+    if expiring:
+        names = ", ".join([i.name for i in expiring[:4]]) + (f" +{len(expiring)-4}" if len(expiring) > 4 else "")
+        preview_parts.append(html.Span(f"🔴 Use first: {names}", className="preview-expiring"))
+    if use_soon:
+        names = ", ".join([i.name for i in use_soon[:3]]) + (f" +{len(use_soon)-3}" if len(use_soon) > 3 else "")
+        preview_parts.append(html.Span(f"🟡 Use soon: {names}", className="preview-soon"))
+    if fresh:
+        names = ", ".join([i.name for i in fresh[:3]]) + (f" +{len(fresh)-3}" if len(fresh) > 3 else "")
+        preview_parts.append(html.Span(f"🟢 Fresh: {names}", className="preview-fresh"))
+    
+    return html.Div([
+        html.Span(f"📋 {len(selected_ids)} items selected", className="preview-count"),
+        html.Div(preview_parts, className="preview-groups")
+    ], className="prompt-preview-content")
+
+
+@callback(
+    [Output("assistant-chat-messages", "children"),
+     Output("assistant-streaming-state", "data", allow_duplicate=True),
+     Output("assistant-stream-interval", "disabled", allow_duplicate=True)],
     [Input("main-tabs", "value")],
     [State("chat-history", "data")],
     prevent_initial_call=True
 )
-def initialize_chat(tab, history):
-    """Initialize chat with welcome message when tab is opened (no auto-suggestions)."""
-    if tab != "recipe-chat-tab":
+def initialize_kitchen_assistant(tab, history):
+    """Initialize chat with welcome message when Kitchen Assistant tab is opened."""
+    if tab != "kitchen-assistant-tab":
         return dash.no_update, dash.no_update, dash.no_update
     
     if not history:
-        # Simple welcome message without auto-starting suggestions
-        items = get_vegetables_and_meat()
-        if not items:
-            welcome = ("👋 Hi! I'm your recipe assistant. No vegetables or meat in your "
-                      "fridge yet. Upload a receipt on the Food Tracker tab to start!")
+        all_items = db.get_all_items()
+        if not all_items:
+            welcome = ("👋 Welcome to your Kitchen Assistant!\n\n"
+                      "No items in your kitchen yet. Upload a grocery receipt on the **My Food** tab to start!")
         else:
-            expiring = [i for i in items if i.freshness_percentage < 30]
-            welcome = f"👋 Hi! I can help you find recipes using your {len(items)} ingredients"
+            expiring = [i for i in all_items if i.freshness_percentage < 30]
+            use_soon = [i for i in all_items if 30 <= i.freshness_percentage < 60]
+            welcome = f"👋 Welcome! You have **{len(all_items)} items** in your kitchen."
             if expiring:
-                welcome += f" — {len(expiring)} item(s) are expiring soon!"
-            welcome += "\n\nSelect ingredients on the left and click **'Top 5 things I can make'** to get started!"
+                welcome += f"\n\n⚠️ **{len(expiring)} items are expiring soon** and should be used first!"
+            if use_soon:
+                welcome += f"\n🟡 {len(use_soon)} items should be used in the next few days."
+            welcome += "\n\n**Quick start:**\n• Select items on the left\n• Click a quick action button\n• Or type your own question!"
         
         welcome_message = html.Div(className="chat-message bot", children=[
             html.Span("🤖", className="message-avatar"),
             html.Div(welcome, className="message-content")
         ])
-        
         return [welcome_message], dash.no_update, dash.no_update
     
     return render_chat_messages(history), dash.no_update, dash.no_update
 
 
+def build_ingredients_context(selected_ids: List[int]) -> str:
+    """Build a context string describing selected ingredients."""
+    if not selected_ids:
+        return "No ingredients selected."
+    items = get_all_items_by_ids(selected_ids)
+    if not items:
+        return "No ingredients selected."
+    
+    items.sort(key=lambda x: x.freshness_percentage)
+    lines = []
+    for item in items:
+        note = ""
+        if item.freshness_percentage < 30:
+            note = " ⚠️ EXPIRING"
+        elif item.freshness_percentage < 60:
+            note = " (use soon)"
+        cat = f" [{item.category}]" if item.category else ""
+        lines.append(f"- {item.name}{cat}: {item.days_remaining} days left{note}")
+    return "\n".join(lines)
+
+
 @callback(
-    [Output("chat-messages", "children", allow_duplicate=True),
-     Output("streaming-state", "data", allow_duplicate=True),
-     Output("chat-stream-interval", "disabled", allow_duplicate=True),
+    [Output("assistant-chat-messages", "children", allow_duplicate=True),
+     Output("assistant-streaming-state", "data", allow_duplicate=True),
+     Output("assistant-stream-interval", "disabled", allow_duplicate=True),
      Output("chat-history", "data", allow_duplicate=True)],
-    Input("top5-btn", "n_clicks"),
-    [State("ingredient-checklist", "value"),
-     State("use-recipes-doc", "value"),
+    [Input("quick-top5-btn", "n_clicks"),
+     Input("quick-expiring-btn", "n_clicks"),
+     Input("quick-mealprep-btn", "n_clicks"),
+     Input("quick-now-btn", "n_clicks")],
+    [State("kitchen-items-checklist", "value"),
+     State("use-recipes-doc-assistant", "value"),
      State("chat-history", "data")],
     prevent_initial_call=True
 )
-def handle_top5_request(n_clicks, selected_items, use_recipes, history):
-    """Handle the Top 5 button click to get recipe suggestions."""
-    if not n_clicks or not selected_items:
+def handle_quick_actions(top5, expiring, mealprep, now, selected_items, use_recipes, history):
+    """Handle quick action button clicks."""
+    if not ctx.triggered_id:
         return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    
+    if not selected_items:
+        msg = html.Div(className="chat-message bot", children=[
+            html.Span("🤖", className="message-avatar"),
+            html.Div("Please select some items from the list first!", className="message-content")
+        ])
+        messages = render_chat_messages(history or [])
+        messages.append(msg)
+        return messages, dash.no_update, dash.no_update, dash.no_update
     
     use_doc = "yes" in (use_recipes or [])
+    ctx_text = build_ingredients_context(selected_items)
+    triggered = ctx.triggered_id
     
-    # Get the top 5 prompt with selected ingredients
-    prompt = chat_engine.get_top5_prompt(selected_items)
-    if not prompt:
+    if triggered == "quick-top5-btn":
+        user_msg = "🍳 What are the top 5 things I can make?"
+        prompt = f"Based on these ingredients:\n\n{ctx_text}\n\nGive me TOP 5 dishes. For each: name, ingredients used, one tip. Prioritize expiring items (⚠️)."
+    elif triggered == "quick-expiring-btn":
+        user_msg = "⚠️ What should I use before it goes bad?"
+        prompt = f"I have:\n\n{ctx_text}\n\nFocus on EXPIRING items (⚠️). What should I make TODAY? Give 2-3 practical suggestions."
+    elif triggered == "quick-mealprep-btn":
+        user_msg = "🥗 Meal prep ideas for the week"
+        prompt = f"Based on:\n\n{ctx_text}\n\nSuggest 3 meal prep ideas. Include: what to make, ingredients, storage, portions."
+    elif triggered == "quick-now-btn":
+        user_msg = "🍲 What can I make right now?"
+        prompt = f"I have:\n\n{ctx_text}\n\nWhat's the easiest thing I can make RIGHT NOW (under 30 min)? Give 2-3 quick options."
+    else:
         return dash.no_update, dash.no_update, dash.no_update, dash.no_update
     
-    # Initialize history if empty
     if not history:
-        items = get_vegetables_and_meat()
-        if not items:
-            welcome = ("👋 Hi! I'm your recipe assistant. No vegetables or meat in your "
-                      "fridge yet. Upload a receipt on the Food Tracker tab to start!")
-        else:
-            expiring = [i for i in items if i.freshness_percentage < 30]
-            welcome = f"👋 Hi! I can help you find recipes using your {len(items)} ingredients"
-            if expiring:
-                welcome += f" — {len(expiring)} item(s) are expiring soon!"
-            welcome += "\n\nSelect ingredients on the left and click **'Top 5 things I can make'** to get started!"
-        history = [{"role": "assistant", "content": welcome}]
+        history = []
     
-    # Create a user-friendly display message
-    selected_item_objects = get_items_by_ids(selected_items)
-    selected_names = [item.name for item in selected_item_objects]
-    user_display_msg = f"🍳 Top 5 things I can make with: {', '.join(selected_names)}"
-    
-    # Add user message to history for display
-    history_with_user = history + [{"role": "user", "content": user_display_msg}]
-    
-    # Start streaming the response
+    history_with_user = history + [{"role": "user", "content": user_msg}]
     chat_engine.start_streaming_response(prompt, use_recipes_doc=use_doc)
     
-    # Show user message + typing indicator
     messages = render_chat_messages(history_with_user)
     messages.append(render_typing_indicator())
     
-    # Enable interval for polling
-    streaming_state = {
-        "active": True,
-        "pending_message": user_display_msg,
-        "use_doc": use_doc,
-        "history_before": history
-    }
-    
-    return messages, streaming_state, False, dash.no_update  # False = interval enabled
+    state = {"active": True, "pending_message": user_msg, "use_doc": use_doc}
+    return messages, state, False, dash.no_update
 
 
 def render_chat_messages(history):
@@ -975,102 +1001,72 @@ def render_typing_indicator():
 
 
 @callback(
-    [Output("chat-messages", "children", allow_duplicate=True),
-     Output("chat-input", "value"),
-     Output("streaming-state", "data"),
-     Output("chat-stream-interval", "disabled")],
-    [Input("chat-send-btn", "n_clicks"), Input("chat-input", "n_submit")],
-    [State("chat-input", "value"), State("chat-history", "data"), State("use-recipes-doc", "value")],
+    [Output("assistant-chat-messages", "children", allow_duplicate=True),
+     Output("assistant-chat-input", "value"),
+     Output("assistant-streaming-state", "data", allow_duplicate=True),
+     Output("assistant-stream-interval", "disabled", allow_duplicate=True)],
+    [Input("assistant-send-btn", "n_clicks"), Input("assistant-chat-input", "n_submit")],
+    [State("assistant-chat-input", "value"), State("chat-history", "data"), 
+     State("use-recipes-doc-assistant", "value"), State("kitchen-items-checklist", "value")],
     prevent_initial_call=True
 )
-def start_chat_stream(n_clicks, n_submit, message, history, use_recipes):
-    """Handle sending a chat message - starts streaming."""
+def send_assistant_message(n_clicks, n_submit, message, history, use_recipes, selected_items):
+    """Handle sending a chat message in the Kitchen Assistant."""
     if not message or not message.strip():
         return dash.no_update, dash.no_update, dash.no_update, dash.no_update
     
     message = message.strip()
     use_doc = "yes" in (use_recipes or [])
-    
     if not history:
-        history = [{"role": "assistant", "content": chat_engine.get_welcome_message()}]
+        history = []
     
-    # Add user message to display
+    ctx_text = build_ingredients_context(selected_items or [])
+    if selected_items:
+        full_prompt = f"Selected ingredients:\n\n{ctx_text}\n\nUser question: {message}\n\nAnswer based on available ingredients."
+    else:
+        full_prompt = message
+    
     history_with_user = history + [{"role": "user", "content": message}]
+    chat_engine.start_streaming_response(full_prompt, use_recipes_doc=use_doc)
     
-    # Start streaming in background
-    chat_engine.start_streaming_response(message, use_recipes_doc=use_doc)
-    
-    # Show user message + typing indicator
     messages = render_chat_messages(history_with_user)
     messages.append(render_typing_indicator())
     
-    # Enable interval for polling, store pending message info
-    streaming_state = {
-        "active": True,
-        "pending_message": message,
-        "use_doc": use_doc,
-        "history_before": history
-    }
-    
-    return messages, "", streaming_state, False  # False = interval enabled
+    state = {"active": True, "pending_message": message, "use_doc": use_doc}
+    return messages, "", state, False
 
 
 @callback(
-    [Output("chat-messages", "children", allow_duplicate=True),
-     Output("chat-history", "data"),
-     Output("streaming-state", "data", allow_duplicate=True),
-     Output("chat-stream-interval", "disabled", allow_duplicate=True)],
-    Input("chat-stream-interval", "n_intervals"),
-    [State("streaming-state", "data"), State("chat-history", "data")],
+    [Output("assistant-chat-messages", "children", allow_duplicate=True),
+     Output("chat-history", "data", allow_duplicate=True),
+     Output("assistant-streaming-state", "data", allow_duplicate=True),
+     Output("assistant-stream-interval", "disabled", allow_duplicate=True)],
+    Input("assistant-stream-interval", "n_intervals"),
+    [State("assistant-streaming-state", "data"), State("chat-history", "data")],
     prevent_initial_call=True
 )
-def poll_streaming_response(n_intervals, streaming_state, history):
+def poll_assistant_streaming(n_intervals, streaming_state, history):
     """Poll for streaming response updates."""
     if not streaming_state or not streaming_state.get("active"):
-        return dash.no_update, dash.no_update, dash.no_update, True  # Disable interval
+        return dash.no_update, dash.no_update, dash.no_update, True
     
-    # Get current streaming state from chat engine
     current_text, is_complete, error = chat_engine.get_streaming_state()
-    
-    # Check if this is the initial suggestions (no user message shown)
-    is_initial = streaming_state.get("is_initial", False)
-    
     if not history:
-        history = [{"role": "assistant", "content": chat_engine.get_welcome_message()}]
+        history = []
     
-    # For initial suggestions, we don't add a user message to display
-    if is_initial:
-        base_history = history
-    else:
-        # Reconstruct history with the user's message
-        pending_message = streaming_state.get("pending_message")
-        base_history = history + [{"role": "user", "content": pending_message}]
+    pending = streaming_state.get("pending_message")
+    base_history = history + [{"role": "user", "content": pending}]
     
     if error:
-        # Error occurred - show error message and stop
         new_history = base_history + [{"role": "assistant", "content": error}]
-        return (
-            render_chat_messages(new_history),
-            new_history,
-            {"active": False, "pending_message": None, "use_doc": False},
-            True  # Disable interval
-        )
+        return render_chat_messages(new_history), new_history, {"active": False}, True
     
     if is_complete:
-        # Streaming complete - finalize message
-        final_text = current_text.strip() if current_text else "I couldn't generate a response."
-        new_history = base_history + [{"role": "assistant", "content": final_text}]
-        return (
-            render_chat_messages(new_history),
-            new_history,
-            {"active": False, "pending_message": None, "use_doc": False},
-            True  # Disable interval
-        )
+        final = current_text.strip() if current_text else "I couldn't generate a response."
+        new_history = base_history + [{"role": "assistant", "content": final}]
+        return render_chat_messages(new_history), new_history, {"active": False}, True
     
-    # Still streaming - update with current text
-    messages = render_chat_messages_with_streaming(base_history, current_text)
-    
-    return messages, dash.no_update, dash.no_update, False  # Keep interval enabled
+    return render_chat_messages_with_streaming(base_history, current_text), dash.no_update, dash.no_update, False
 
 
 @callback(
@@ -1081,10 +1077,8 @@ def render_tab_content(tab):
     """Render the content for the selected tab."""
     if tab == "food-tab":
         return create_food_tab_content()
-    elif tab == "shopping-tab":
-        return create_shopping_tab_content()
-    elif tab == "recipe-chat-tab":
-        return create_recipe_chat_content()
+    elif tab == "kitchen-assistant-tab":
+        return create_kitchen_assistant_content()
     return html.Div()
 
 
