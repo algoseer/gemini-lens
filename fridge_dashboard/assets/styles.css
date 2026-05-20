@@ -115,6 +115,7 @@ body {
 .item-card.fresh { border-left: 5px solid #28a745; }
 .item-card.warning { border-left: 5px solid #ffc107; }
 .item-card.danger { border-left: 5px solid #dc3545; }
+.item-card.no-expiry { border-left: 5px solid #6c757d; background: linear-gradient(135deg, #f8f9fa, #e9ecef); }
 
 /* Delete Button */
 .delete-btn {
@@ -374,6 +375,7 @@ body {
 .freshness-bar .fill.fresh { background: linear-gradient(90deg, #28a745, #34ce57); }
 .freshness-bar .fill.warning { background: linear-gradient(90deg, #ffc107, #ffda6a); }
 .freshness-bar .fill.danger { background: linear-gradient(90deg, #dc3545, #f1aeb5); }
+.freshness-bar .fill.no-expiry { background: linear-gradient(90deg, #6c757d, #adb5bd); }
 
 /* Freshness Text */
 .freshness-text {
@@ -386,6 +388,7 @@ body {
 .freshness-text.fresh { color: #28a745; }
 .freshness-text.warning { color: #b8860b; }
 .freshness-text.danger { color: #dc3545; }
+.freshness-text.no-expiry { color: #6c757d; }
 
 /* Empty State */
 .empty-state {
@@ -2475,3 +2478,71 @@ details[open] .ingredients-header::before {
 }
 
 
+
+
+/* No Expiry Tracking Styles */
+.no-expiry-indicator {
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin: 4px 0;
+}
+
+.no-expiry-text {
+    color: #6c757d;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.infinity-days {
+    color: #6c757d;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+/* Ignore Expiry Checkbox in Edit Modal */
+.ignore-expiry-group {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid #e9ecef;
+}
+
+.ignore-expiry-checkbox {
+    display: flex;
+    align-items: center;
+}
+
+.ignore-expiry-checkbox label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: 500;
+    color: #495057;
+}
+
+.ignore-expiry-checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-right: 10px;
+    accent-color: #6c757d;
+}
+
+.ignore-expiry-hint {
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Food Badge No Expiry State */
+.food-badge.no-expiry {
+    border-color: #6c757d;
+    background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+}
+
+.food-badge-days.no-expiry {
+    background: #6c757d;
+    color: white;
+}

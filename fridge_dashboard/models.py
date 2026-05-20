@@ -33,6 +33,7 @@ class FridgeItem:
     category: Optional[str] = None
     remaining_percentage: int = 100  # How much of the item is left (0-100%)
     storage_location: str = STORAGE_FRIDGE  # Where the item is stored
+    ignore_expiry: bool = False  # If True, don't track expiry for this item
     
     @property
     def days_elapsed(self) -> int:
@@ -42,11 +43,15 @@ class FridgeItem:
     @property
     def days_remaining(self) -> int:
         """Calculate days remaining before expiration."""
+        if self.ignore_expiry:
+            return 999  # Effectively infinite
         return max(0, self.shelf_life_days - self.days_elapsed)
     
     @property
     def freshness_percentage(self) -> float:
         """Calculate freshness as a percentage (0-100)."""
+        if self.ignore_expiry:
+            return 100  # Always fresh when expiry is ignored
         if self.shelf_life_days <= 0:
             return 0
         freshness = (self.shelf_life_days - self.days_elapsed) / self.shelf_life_days * 100
@@ -55,6 +60,8 @@ class FridgeItem:
     @property
     def status_color(self) -> str:
         """Get color based on freshness level."""
+        if self.ignore_expiry:
+            return "#6c757d"  # Gray - neutral color for non-tracked items
         pct = self.freshness_percentage
         if pct >= 60:
             return "#28a745"  # Green
@@ -66,6 +73,8 @@ class FridgeItem:
     @property
     def status_emoji(self) -> str:
         """Get emoji based on freshness level."""
+        if self.ignore_expiry:
+            return "♾️"  # Infinity symbol for non-tracked items
         pct = self.freshness_percentage
         if pct >= 60:
             return "🟢"
@@ -77,6 +86,8 @@ class FridgeItem:
     @property
     def status_text(self) -> str:
         """Get status text based on freshness level."""
+        if self.ignore_expiry:
+            return "No Expiry"
         pct = self.freshness_percentage
         if pct >= 60:
             return "Fresh"
@@ -100,6 +111,7 @@ class FridgeItem:
             "cost": self.cost,
             "category": self.category,
             "storage_location": self.storage_location,
+            "ignore_expiry": self.ignore_expiry,
             "days_elapsed": self.days_elapsed,
             "days_remaining": self.days_remaining,
             "freshness_percentage": round(self.freshness_percentage, 1),
@@ -126,6 +138,7 @@ class FridgeItem:
             cost=data.get("cost"),
             category=data.get("category"),
             storage_location=data.get("storage_location", STORAGE_FRIDGE),
+            ignore_expiry=data.get("ignore_expiry", False),
         )
 
 

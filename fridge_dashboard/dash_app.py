@@ -42,7 +42,54 @@ def get_status_class(freshness_pct: float) -> str:
 
 def create_item_card(item: FridgeItem) -> html.Div:
     """Create a card component for a food item with editable name and shelf life."""
-    status_class = get_status_class(item.freshness_percentage)
+    status_class = "no-expiry" if item.ignore_expiry else get_status_class(item.freshness_percentage)
+    
+    # Build shelf life section - show differently for items with ignored expiry
+    if item.ignore_expiry:
+        shelf_life_section = html.Div(
+            className="shelf-life-row no-expiry-indicator",
+            children=[
+                html.Span("♾️ No expiry tracking", className="no-expiry-text")
+            ]
+        )
+        days_left_section = html.Div([
+            html.Span("Days left: ", className="label"),
+            html.Span("∞", className="infinity-days")
+        ])
+    else:
+        shelf_life_section = html.Div(
+            className="shelf-life-row",
+            children=[
+                html.Span("Shelf life: ", className="label"),
+                html.Div(
+                    className="shelf-life-control",
+                    children=[
+                        html.Button(
+                            "−",
+                            className="shelf-btn shelf-btn-down",
+                            id={"type": "shelf-down-btn", "index": item.id},
+                            n_clicks=0
+                        ),
+                        html.Span(
+                            str(item.shelf_life_days),
+                            className="shelf-life-value",
+                            id={"type": "shelf-life-display", "index": item.id}
+                        ),
+                        html.Button(
+                            "+",
+                            className="shelf-btn shelf-btn-up",
+                            id={"type": "shelf-up-btn", "index": item.id},
+                            n_clicks=0
+                        ),
+                    ]
+                ),
+                html.Span(" days", className="days-label")
+            ]
+        )
+        days_left_section = html.Div([
+            html.Span("Days left: ", className="label"),
+            html.Span(f"{item.days_remaining} days")
+        ])
     
     return html.Div(
         className=f"item-card {status_class}",
@@ -87,39 +134,8 @@ def create_item_card(item: FridgeItem) -> html.Div:
                         html.Span("Bought: ", className="label"),
                         html.Span(item.purchase_date.strftime("%b %d, %Y"))
                     ]),
-                    html.Div(
-                        className="shelf-life-row",
-                        children=[
-                            html.Span("Shelf life: ", className="label"),
-                            html.Div(
-                                className="shelf-life-control",
-                                children=[
-                                    html.Button(
-                                        "−",
-                                        className="shelf-btn shelf-btn-down",
-                                        id={"type": "shelf-down-btn", "index": item.id},
-                                        n_clicks=0
-                                    ),
-                                    html.Span(
-                                        str(item.shelf_life_days),
-                                        className="shelf-life-value",
-                                        id={"type": "shelf-life-display", "index": item.id}
-                                    ),
-                                    html.Button(
-                                        "+",
-                                        className="shelf-btn shelf-btn-up",
-                                        id={"type": "shelf-up-btn", "index": item.id},
-                                        n_clicks=0
-                                    ),
-                                ]
-                            ),
-                            html.Span(" days", className="days-label")
-                        ]
-                    ),
-                    html.Div([
-                        html.Span("Days left: ", className="label"),
-                        html.Span(f"{item.days_remaining} days")
-                    ])
+                    shelf_life_section,
+                    days_left_section
                 ]
             ),
             # Remaining amount slider
@@ -173,9 +189,12 @@ def create_item_card(item: FridgeItem) -> html.Div:
 def create_stats_cards(items: List[FridgeItem]) -> html.Div:
     """Create statistics cards showing item counts by status."""
     total = len(items)
-    fresh = len([i for i in items if i.freshness_percentage >= 60])
-    warning = len([i for i in items if 30 <= i.freshness_percentage < 60])
-    danger = len([i for i in items if i.freshness_percentage < 30])
+    # Items with ignore_expiry are counted as "fresh" and not in warning/danger
+    no_expiry = len([i for i in items if i.ignore_expiry])
+    tracked_items = [i for i in items if not i.ignore_expiry]
+    fresh = len([i for i in tracked_items if i.freshness_percentage >= 60]) + no_expiry
+    warning = len([i for i in tracked_items if 30 <= i.freshness_percentage < 60])
+    danger = len([i for i in tracked_items if i.freshness_percentage < 30])
     
     return html.Div(
         className="stats-container",
@@ -191,7 +210,7 @@ def create_stats_cards(items: List[FridgeItem]) -> html.Div:
                 className="stat-card fresh",
                 children=[
                     html.Div(str(fresh), className="stat-number"),
-                    html.Div("🟢 Fresh", className="stat-label")
+                    html.Div(f"🟢 Fresh{f' (♾️{no_expiry})' if no_expiry else ''}", className="stat-label")
                 ]
             ),
             html.Div(
@@ -230,8 +249,8 @@ def create_empty_state() -> html.Div:
 
 def create_compact_food_badge(item: FridgeItem) -> html.Div:
     """Create a compact badge for a food item that opens edit modal on click."""
-    status_class = get_status_class(item.freshness_percentage)
-    days_text = f"{item.days_remaining}d" if item.days_remaining >= 0 else "Exp"
+    status_class = "no-expiry" if item.ignore_expiry else get_status_class(item.freshness_percentage)
+    days_text = "♾️" if item.ignore_expiry else (f"{item.days_remaining}d" if item.days_remaining >= 0 else "Exp")
     
     return html.Div(
         className=f"food-badge {status_class}",
@@ -1564,9 +1583,21 @@ def create_edit_modal_body(item: FridgeItem) -> html.Div:
             html.Div(className="edit-shelf-life-control", children=[
                 html.Button("−", id="edit-shelf-down", className="edit-shelf-btn", n_clicks=0),
                 dcc.Input(id="edit-item-shelf-life", type="number", value=item.shelf_life_days,
-                          className="edit-shelf-input", min=1, max=365),
+                          className="edit-shelf-input", min=1, max=365, disabled=item.ignore_expiry),
                 html.Button("+", id="edit-shelf-up", className="edit-shelf-btn", n_clicks=0)
             ])
+        ]),
+        html.Div(className="edit-form-group ignore-expiry-group", children=[
+            dcc.Checklist(
+                id="edit-item-ignore-expiry",
+                options=[{"label": " Don't track expiry date", "value": "ignore"}],
+                value=["ignore"] if item.ignore_expiry else [],
+                className="ignore-expiry-checkbox"
+            ),
+            html.Div("♾️ This item won't show expiry warnings", 
+                     className="ignore-expiry-hint",
+                     style={"display": "block" if item.ignore_expiry else "none"},
+                     id="ignore-expiry-hint")
         ]),
         html.Div(className="edit-form-group", children=[
             html.Label("Remaining", className="edit-form-label"),
@@ -1585,7 +1616,7 @@ def create_edit_modal_body(item: FridgeItem) -> html.Div:
             html.Div([html.Span(item.status_emoji, style={"marginRight": "8px"}),
                       html.Span(item.status_text, className=f"status-badge {get_status_class(item.freshness_percentage)}")]),
             html.Div(f"Purchased: {item.purchase_date.strftime('%b %d, %Y')}", className="edit-info-text"),
-            html.Div(f"Days remaining: {item.days_remaining}", className="edit-info-text"),
+            html.Div(f"Days remaining: {'∞' if item.ignore_expiry else item.days_remaining}", className="edit-info-text"),
             html.Div(f"Category: {item.category or 'Other'}", className="edit-info-text")
         ])
     ])
@@ -1665,13 +1696,17 @@ def update_shelf_life_in_modal(up_clicks, down_clicks, current_value):
      State("edit-item-shelf-life", "value"),
      State("edit-item-remaining", "value"),
      State("edit-item-storage", "value"),
+     State("edit-item-ignore-expiry", "value"),
      State("refresh-trigger", "data")],
     prevent_initial_call=True
 )
-def save_edit_modal(n_clicks, item_id, name, shelf_life, remaining, storage, current_trigger):
+def save_edit_modal(n_clicks, item_id, name, shelf_life, remaining, storage, ignore_expiry, current_trigger):
     """Save the edited item and close the modal."""
     if not n_clicks or not item_id:
         return dash.no_update, dash.no_update
+    
+    # Convert ignore_expiry checklist value to boolean
+    ignore_expiry_bool = bool(ignore_expiry and "ignore" in ignore_expiry)
     
     # Update the item in the database
     db.update_item(
@@ -1679,7 +1714,8 @@ def save_edit_modal(n_clicks, item_id, name, shelf_life, remaining, storage, cur
         name=name.strip() if name else None,
         shelf_life_days=shelf_life,
         remaining_percentage=remaining,
-        storage_location=storage
+        storage_location=storage,
+        ignore_expiry=ignore_expiry_bool
     )
     
     return {"display": "none"}, current_trigger + 1

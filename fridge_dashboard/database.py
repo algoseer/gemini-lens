@@ -35,6 +35,7 @@ def init_database():
             category TEXT,
             remaining_percentage INTEGER DEFAULT 100,
             storage_location TEXT DEFAULT 'fridge',
+            ignore_expiry INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -48,6 +49,12 @@ def init_database():
     # Add storage_location column if it doesn't exist (migration)
     try:
         cursor.execute("ALTER TABLE fridge_items ADD COLUMN storage_location TEXT DEFAULT 'fridge'")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    # Add ignore_expiry column if it doesn't exist (migration)
+    try:
+        cursor.execute("ALTER TABLE fridge_items ADD COLUMN ignore_expiry INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
         pass  # Column already exists
     
@@ -152,14 +159,14 @@ def get_all_items(storage_location: Optional[str] = None) -> List[FridgeItem]:
     
     if storage_location:
         cursor.execute("""
-            SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage, storage_location
+            SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage, storage_location, ignore_expiry
             FROM fridge_items
             WHERE storage_location = ?
             ORDER BY purchase_date DESC
         """, (storage_location,))
     else:
         cursor.execute("""
-            SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage, storage_location
+            SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage, storage_location, ignore_expiry
             FROM fridge_items
             ORDER BY purchase_date DESC
         """)
@@ -177,7 +184,8 @@ def get_all_items(storage_location: Optional[str] = None) -> List[FridgeItem]:
             cost=row["cost"],
             category=row["category"],
             remaining_percentage=row["remaining_percentage"] or 100,
-            storage_location=row["storage_location"] or "fridge"
+            storage_location=row["storage_location"] or "fridge",
+            ignore_expiry=bool(row["ignore_expiry"]) if row["ignore_expiry"] is not None else False
         ))
     
     return items
@@ -189,7 +197,7 @@ def get_item_by_id(item_id: int) -> Optional[FridgeItem]:
     cursor = conn.cursor()
     
     cursor.execute("""
-        SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage, storage_location
+        SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage, storage_location, ignore_expiry
         FROM fridge_items
         WHERE id = ?
     """, (item_id,))
@@ -206,7 +214,8 @@ def get_item_by_id(item_id: int) -> Optional[FridgeItem]:
             cost=row["cost"],
             category=row["category"],
             remaining_percentage=row["remaining_percentage"] or 100,
-            storage_location=row["storage_location"] or "fridge"
+            storage_location=row["storage_location"] or "fridge",
+            ignore_expiry=bool(row["ignore_expiry"]) if row["ignore_expiry"] is not None else False
         )
     return None
 
@@ -244,7 +253,7 @@ def update_item(item_id: int, **kwargs) -> bool:
     
     Args:
         item_id: The ID of the item to update
-        **kwargs: Fields to update (name, shelf_life_days, cost, category, purchase_date, storage_location)
+        **kwargs: Fields to update (name, shelf_life_days, cost, category, purchase_date, storage_location, ignore_expiry)
     
     Returns:
         True if item was updated, False otherwise
@@ -253,7 +262,7 @@ def update_item(item_id: int, **kwargs) -> bool:
         return False
     
     # Build the SET clause dynamically based on provided kwargs
-    valid_fields = {'name', 'shelf_life_days', 'cost', 'category', 'purchase_date', 'remaining_percentage', 'storage_location'}
+    valid_fields = {'name', 'shelf_life_days', 'cost', 'category', 'purchase_date', 'remaining_percentage', 'storage_location', 'ignore_expiry'}
     updates = []
     values = []
     
@@ -263,6 +272,9 @@ def update_item(item_id: int, **kwargs) -> bool:
             # Convert date to ISO format if needed
             if field == 'purchase_date' and hasattr(value, 'isoformat'):
                 value = value.isoformat()
+            # Convert bool to int for SQLite
+            if field == 'ignore_expiry' and isinstance(value, bool):
+                value = 1 if value else 0
             values.append(value)
     
     if not updates:
