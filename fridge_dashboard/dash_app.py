@@ -1573,20 +1573,69 @@ def delete_item(n_clicks, current_trigger):
 
 def create_edit_modal_body(item: FridgeItem) -> html.Div:
     """Create the body content for the edit modal."""
+    # Build per-location shelf life hints
+    loc_labels = {"fridge": "🧊 Fridge", "freezer": "❄️ Freezer", "pantry": "🗄️ Pantry", "counter": "🍎 Counter"}
+    loc_fields = {
+        "fridge":  item.shelf_life_fridge,
+        "freezer": item.shelf_life_freezer,
+        "pantry":  item.shelf_life_pantry,
+        "counter": item.shelf_life_counter,
+    }
+    has_per_loc = any(v is not None for v in loc_fields.values())
+    per_loc_hints = []
+    if has_per_loc:
+        for loc, label in loc_labels.items():
+            val = loc_fields[loc]
+            if val is not None:
+                is_current = (loc == item.storage_location)
+                per_loc_hints.append(
+                    html.Span(
+                        f"{label}: {val}d",
+                        className="shelf-life-loc-hint" + (" shelf-life-loc-current" if is_current else ""),
+                        title=f"Shelf life in {label}: {val} days"
+                    )
+                )
+
+    # Hidden store for per-location shelf life values (passed as JSON)
+    import json as _json
+    per_loc_json = _json.dumps({
+        "fridge":  item.shelf_life_fridge,
+        "freezer": item.shelf_life_freezer,
+        "pantry":  item.shelf_life_pantry,
+        "counter": item.shelf_life_counter,
+    })
+
     return html.Div([
+        # Hidden store for per-location shelf life
+        dcc.Store(id="edit-item-per-loc-shelf-life", data=per_loc_json),
+
         html.Div(className="edit-form-group", children=[
             html.Label("Name", className="edit-form-label"),
             dcc.Input(id="edit-item-name", type="text", value=item.name,
                       className="edit-form-input", placeholder="Item name")
         ]),
         html.Div(className="edit-form-group", children=[
+            html.Label("Storage Location", className="edit-form-label"),
+            dcc.Dropdown(id="edit-item-storage", options=[
+                {"label": "🧊 Fridge", "value": "fridge"}, {"label": "❄️ Freezer", "value": "freezer"},
+                {"label": "🗄️ Pantry", "value": "pantry"}, {"label": "🍎 Counter", "value": "counter"}
+            ], value=item.storage_location, className="edit-storage-dropdown", clearable=False)
+        ]),
+        html.Div(className="edit-form-group", children=[
             html.Label("Shelf Life (days)", className="edit-form-label"),
             html.Div(className="edit-shelf-life-control", children=[
                 html.Button("−", id="edit-shelf-down", className="edit-shelf-btn", n_clicks=0),
                 dcc.Input(id="edit-item-shelf-life", type="number", value=item.shelf_life_days,
-                          className="edit-shelf-input", min=1, max=365, disabled=item.ignore_expiry),
+                          className="edit-shelf-input", min=1, max=3650, disabled=item.ignore_expiry),
                 html.Button("+", id="edit-shelf-up", className="edit-shelf-btn", n_clicks=0)
-            ])
+            ]),
+            # Per-location shelf life hints
+            html.Div(
+                className="shelf-life-loc-hints",
+                children=per_loc_hints if per_loc_hints else [
+                    html.Span("No per-location data yet", className="shelf-life-loc-hint-empty")
+                ]
+            )
         ]),
         html.Div(className="edit-form-group ignore-expiry-group", children=[
             dcc.Checklist(
@@ -1605,13 +1654,6 @@ def create_edit_modal_body(item: FridgeItem) -> html.Div:
             html.Div(f"{item.remaining_percentage}%", className="edit-remaining-display", id="edit-remaining-display"),
             dcc.Slider(id="edit-item-remaining", min=0, max=100, step=10, value=item.remaining_percentage,
                        marks={0: '0%', 50: '50%', 100: '100%'}, className="edit-remaining-slider")
-        ]),
-        html.Div(className="edit-form-group", children=[
-            html.Label("Storage Location", className="edit-form-label"),
-            dcc.Dropdown(id="edit-item-storage", options=[
-                {"label": "🧊 Fridge", "value": "fridge"}, {"label": "❄️ Freezer", "value": "freezer"},
-                {"label": "🗄️ Pantry", "value": "pantry"}, {"label": "🍎 Counter", "value": "counter"}
-            ], value=item.storage_location, className="edit-storage-dropdown", clearable=False)
         ]),
         html.Div(className="edit-item-info", children=[
             html.Div([html.Span(item.status_emoji, style={"marginRight": "8px"}),
@@ -1672,18 +1714,36 @@ def update_remaining_display(value):
 @callback(
     Output("edit-item-shelf-life", "value"),
     [Input("edit-shelf-up", "n_clicks"),
-     Input("edit-shelf-down", "n_clicks")],
-    State("edit-item-shelf-life", "value"),
+     Input("edit-shelf-down", "n_clicks"),
+     Input("edit-item-storage", "value")],
+    [State("edit-item-shelf-life", "value"),
+     State("edit-item-per-loc-shelf-life", "data")],
     prevent_initial_call=True
 )
-def update_shelf_life_in_modal(up_clicks, down_clicks, current_value):
-    """Update shelf life value when +/- buttons are clicked."""
-    if not ctx.triggered_id or current_value is None:
+def update_shelf_life_in_modal(up_clicks, down_clicks, storage_value, current_value, per_loc_data):
+    """Update shelf life value when +/- buttons are clicked or storage location changes."""
+    if not ctx.triggered_id:
         return dash.no_update
-    
-    if ctx.triggered_id == "edit-shelf-up":
-        return min(365, current_value + 1)
-    elif ctx.triggered_id == "edit-shelf-down":
+
+    triggered = ctx.triggered_id
+
+    # When storage location changes, auto-fill shelf life from per-location data
+    if triggered == "edit-item-storage" and storage_value and per_loc_data:
+        try:
+            per_loc = json.loads(per_loc_data) if isinstance(per_loc_data, str) else per_loc_data
+            new_val = per_loc.get(storage_value)
+            if new_val is not None:
+                return int(new_val)
+        except Exception:
+            pass
+        return dash.no_update
+
+    if current_value is None:
+        return dash.no_update
+
+    if triggered == "edit-shelf-up":
+        return min(3650, current_value + 1)
+    elif triggered == "edit-shelf-down":
         return max(1, current_value - 1)
     return dash.no_update
 
@@ -1698,17 +1758,32 @@ def update_shelf_life_in_modal(up_clicks, down_clicks, current_value):
      State("edit-item-remaining", "value"),
      State("edit-item-storage", "value"),
      State("edit-item-ignore-expiry", "value"),
+     State("edit-item-per-loc-shelf-life", "data"),
      State("refresh-trigger", "data")],
     prevent_initial_call=True
 )
-def save_edit_modal(n_clicks, item_id, name, shelf_life, remaining, storage, ignore_expiry, current_trigger):
+def save_edit_modal(n_clicks, item_id, name, shelf_life, remaining, storage, ignore_expiry, per_loc_data, current_trigger):
     """Save the edited item and close the modal."""
     if not n_clicks or not item_id:
         return dash.no_update, dash.no_update
     
     # Convert ignore_expiry checklist value to boolean
     ignore_expiry_bool = bool(ignore_expiry and "ignore" in ignore_expiry)
-    
+
+    # Build per-location shelf life update: update the current location's value
+    # with whatever the user set in the shelf life input
+    per_loc_kwargs = {}
+    if storage and shelf_life is not None:
+        loc_col_map = {
+            "fridge":  "shelf_life_fridge",
+            "freezer": "shelf_life_freezer",
+            "pantry":  "shelf_life_pantry",
+            "counter": "shelf_life_counter",
+        }
+        col = loc_col_map.get(storage)
+        if col:
+            per_loc_kwargs[col] = shelf_life
+
     # Update the item in the database
     db.update_item(
         item_id,
@@ -1716,7 +1791,8 @@ def save_edit_modal(n_clicks, item_id, name, shelf_life, remaining, storage, ign
         shelf_life_days=shelf_life,
         remaining_percentage=remaining,
         storage_location=storage,
-        ignore_expiry=ignore_expiry_bool
+        ignore_expiry=ignore_expiry_bool,
+        **per_loc_kwargs
     )
     
     return {"display": "none"}, current_trigger + 1

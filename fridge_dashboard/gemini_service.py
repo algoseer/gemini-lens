@@ -70,25 +70,31 @@ Note: For purchase_date, use ISO format (YYYY-MM-DD). If the date is not visible
 
 
 SHELF_LIFE_PROMPT = """
-For the following list of food items with their storage locations, provide the typical shelf life in days.
+For the following list of food items, provide the typical shelf life in days for EACH storage location.
 
 Items: {items}
 
-Consider storage location when determining shelf life:
-- Fridge items: Fresh produce 3-7 days, dairy varies (milk ~7 days, hard cheese ~21 days), raw meat 2-5 days
-- Freezer items: Most items last 30-180 days when properly frozen
-- Pantry items: Dry goods last 180-365 days, canned goods 365+ days
-- Counter items: Bananas ~5 days, potatoes ~14 days, onions ~30 days, tomatoes ~7 days
+For each item, provide shelf life (in days) for all four locations:
+- fridge: refrigerated (35-38°F)
+- freezer: frozen (0°F)
+- pantry: cool, dry shelf storage
+- counter: room temperature
+
+Guidelines:
+- Fridge: Fresh produce 3-7 days, dairy varies (milk ~7 days, hard cheese ~21 days), raw meat 2-5 days
+- Freezer: Most items last 30-365 days when properly frozen (meat 90-180 days, vegetables 180-365 days)
+- Pantry: Dry goods 180-365 days, canned goods 365-730 days; perishables like meat/dairy are NOT safe in pantry (use 0 or 1)
+- Counter: Bananas ~5 days, potatoes ~14 days, onions ~30 days, tomatoes ~7 days; dairy/meat are NOT safe on counter (use 0 or 1)
 
 Output ONLY valid JSON in this exact format, no other text:
 {{
     "shelf_life": {{
-        "Milk": 7,
-        "Chicken Breast": 2,
-        "Lettuce": 5,
-        "Bananas": 5,
-        "Pasta": 365,
-        "Frozen Peas": 180
+        "Milk":          {{"fridge": 7,   "freezer": 90,  "pantry": 1,   "counter": 1}},
+        "Chicken Breast":{{"fridge": 2,   "freezer": 180, "pantry": 1,   "counter": 1}},
+        "Lettuce":       {{"fridge": 5,   "freezer": 180, "pantry": 1,   "counter": 2}},
+        "Bananas":       {{"fridge": 7,   "freezer": 90,  "pantry": 5,   "counter": 5}},
+        "Pasta":         {{"fridge": 3,   "freezer": 730, "pantry": 365, "counter": 180}},
+        "Frozen Peas":   {{"fridge": 5,   "freezer": 365, "pantry": 3,   "counter": 1}}
     }}
 }}
 """
@@ -187,36 +193,33 @@ def parse_receipt_image(image_data: bytes) -> Tuple[List[Dict[str, Any]], Option
         return [], None, debug_info
 
 
-def get_shelf_life_for_items(item_names: List[str]) -> Dict[str, int]:
+def get_shelf_life_for_items(item_names: List[str]) -> Dict[str, Any]:
     """
-    Get estimated shelf life in days for a list of food items.
+    Get estimated shelf life in days for a list of food items, per storage location.
     
     Args:
         item_names: List of food item names
         
     Returns:
-        Dictionary mapping item names to shelf life in days
+        Dictionary mapping item names to a dict of {fridge, freezer, pantry, counter} shelf life days.
+        Falls back to a flat int (7) if the API returns the old format or fails.
     """
     if not item_names:
         return {}
     
     if client is None:
         print("Error: Gemini client not initialized. Set GOOGLE_API_KEY environment variable.")
-        # Return default shelf life of 7 days for all items
-        return {name: 7 for name in item_names}
+        return {name: {"fridge": 7, "freezer": 180, "pantry": 30, "counter": 3} for name in item_names}
     
     try:
-        # Format the prompt with item names
         items_str = ", ".join(item_names)
         prompt = SHELF_LIFE_PROMPT.format(items=items_str)
         
-        # Call Gemini API with the new SDK
         response = client.models.generate_content(
             model=MODEL_ID,
             contents=prompt
         )
         
-        # Parse JSON response
         response_text = response.text.strip()
         
         # Handle markdown code blocks if present
@@ -230,12 +233,10 @@ def get_shelf_life_for_items(item_names: List[str]) -> Dict[str, int]:
     except json.JSONDecodeError as e:
         print(f"Error parsing Gemini response as JSON: {e}")
         print(f"Response was: {response.text if 'response' in dir() else 'N/A'}")
-        # Return default shelf life of 7 days for all items
-        return {name: 7 for name in item_names}
+        return {name: {"fridge": 7, "freezer": 180, "pantry": 30, "counter": 3} for name in item_names}
     except Exception as e:
         print(f"Error getting shelf life: {e}")
-        # Return default shelf life of 7 days for all items
-        return {name: 7 for name in item_names}
+        return {name: {"fridge": 7, "freezer": 180, "pantry": 30, "counter": 3} for name in item_names}
 
 
 def process_receipt_to_fridge_items(
@@ -280,8 +281,21 @@ def process_receipt_to_fridge_items(
     fridge_items = []
     for item in parsed_items:
         name = item["item"]
-        shelf_life = shelf_life_map.get(name, 7)  # Default to 7 days
-        
+        per_loc = shelf_life_map.get(name, {})
+
+        # per_loc may be a dict {fridge, freezer, pantry, counter} or a plain int (legacy fallback)
+        if isinstance(per_loc, dict):
+            sl_fridge  = per_loc.get("fridge",  7)
+            sl_freezer = per_loc.get("freezer", 180)
+            sl_pantry  = per_loc.get("pantry",  30)
+            sl_counter = per_loc.get("counter", 3)
+        else:
+            # Legacy flat int – use as fridge shelf life, derive rough values for others
+            sl_fridge  = int(per_loc)
+            sl_freezer = sl_fridge * 10
+            sl_pantry  = sl_fridge * 3
+            sl_counter = max(1, sl_fridge // 2)
+
         # Map storage value from API to our constants
         storage_value = item.get("storage", "fridge").lower()
         storage_map = {
@@ -291,15 +305,28 @@ def process_receipt_to_fridge_items(
             "counter": STORAGE_COUNTER,
         }
         storage_location = storage_map.get(storage_value, STORAGE_FRIDGE)
-        
+
+        # shelf_life_days = shelf life for the item's current storage location
+        loc_to_sl = {
+            STORAGE_FRIDGE:  sl_fridge,
+            STORAGE_FREEZER: sl_freezer,
+            STORAGE_PANTRY:  sl_pantry,
+            STORAGE_COUNTER: sl_counter,
+        }
+        shelf_life_days = loc_to_sl.get(storage_location, sl_fridge)
+
         fridge_item = FridgeItem(
             id=None,
             name=name,
             purchase_date=purchase_date,
-            shelf_life_days=shelf_life,
+            shelf_life_days=shelf_life_days,
             cost=item.get("cost"),
             category=item.get("category"),
-            storage_location=storage_location
+            storage_location=storage_location,
+            shelf_life_fridge=sl_fridge,
+            shelf_life_freezer=sl_freezer,
+            shelf_life_pantry=sl_pantry,
+            shelf_life_counter=sl_counter,
         )
         fridge_items.append(fridge_item)
     

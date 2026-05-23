@@ -2529,6 +2529,39 @@ details[open] .ingredients-header::before {
     accent-color: #6c757d;
 }
 
+/* Per-location shelf life hints in edit modal */
+.shelf-life-loc-hints {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.shelf-life-loc-hint {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    background: #f0f0f0;
+    color: #555;
+    cursor: default;
+    border: 1px solid #ddd;
+    transition: background 0.2s;
+}
+
+.shelf-life-loc-hint.shelf-life-loc-current {
+    background: #667eea;
+    color: #fff;
+    border-color: #667eea;
+    font-weight: 600;
+}
+
+.shelf-life-loc-hint-empty {
+    font-size: 0.75rem;
+    color: #aaa;
+    font-style: italic;
+}
+
 .ignore-expiry-hint {
     margin-top: 8px;
     font-size: 0.85rem;

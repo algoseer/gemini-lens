@@ -34,7 +34,27 @@ class FridgeItem:
     remaining_percentage: int = 100  # How much of the item is left (0-100%)
     storage_location: str = STORAGE_FRIDGE  # Where the item is stored
     ignore_expiry: bool = False  # If True, don't track expiry for this item
+    # Per-location shelf life (days). None means "use shelf_life_days as fallback"
+    shelf_life_fridge: Optional[int] = None
+    shelf_life_freezer: Optional[int] = None
+    shelf_life_pantry: Optional[int] = None
+    shelf_life_counter: Optional[int] = None
     
+    def get_shelf_life_for_location(self, location: str) -> Optional[int]:
+        """Return the per-location shelf life if known, else None."""
+        mapping = {
+            STORAGE_FRIDGE: self.shelf_life_fridge,
+            STORAGE_FREEZER: self.shelf_life_freezer,
+            STORAGE_PANTRY: self.shelf_life_pantry,
+            STORAGE_COUNTER: self.shelf_life_counter,
+        }
+        return mapping.get(location)
+
+    def shelf_life_for_location(self, location: str) -> int:
+        """Return shelf life for a given location, falling back to current shelf_life_days."""
+        per_loc = self.get_shelf_life_for_location(location)
+        return per_loc if per_loc is not None else self.shelf_life_days
+
     @property
     def days_elapsed(self) -> int:
         """Calculate days since purchase."""
@@ -112,6 +132,10 @@ class FridgeItem:
             "category": self.category,
             "storage_location": self.storage_location,
             "ignore_expiry": self.ignore_expiry,
+            "shelf_life_fridge": self.shelf_life_fridge,
+            "shelf_life_freezer": self.shelf_life_freezer,
+            "shelf_life_pantry": self.shelf_life_pantry,
+            "shelf_life_counter": self.shelf_life_counter,
             "days_elapsed": self.days_elapsed,
             "days_remaining": self.days_remaining,
             "freshness_percentage": round(self.freshness_percentage, 1),
@@ -139,6 +163,10 @@ class FridgeItem:
             category=data.get("category"),
             storage_location=data.get("storage_location", STORAGE_FRIDGE),
             ignore_expiry=data.get("ignore_expiry", False),
+            shelf_life_fridge=data.get("shelf_life_fridge"),
+            shelf_life_freezer=data.get("shelf_life_freezer"),
+            shelf_life_pantry=data.get("shelf_life_pantry"),
+            shelf_life_counter=data.get("shelf_life_counter"),
         )
 
 

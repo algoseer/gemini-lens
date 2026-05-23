@@ -36,6 +36,10 @@ def init_database():
             remaining_percentage INTEGER DEFAULT 100,
             storage_location TEXT DEFAULT 'fridge',
             ignore_expiry INTEGER DEFAULT 0,
+            shelf_life_fridge INTEGER,
+            shelf_life_freezer INTEGER,
+            shelf_life_pantry INTEGER,
+            shelf_life_counter INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -57,6 +61,13 @@ def init_database():
         cursor.execute("ALTER TABLE fridge_items ADD COLUMN ignore_expiry INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
         pass  # Column already exists
+    
+    # Add per-location shelf life columns if they don't exist (migration)
+    for col in ("shelf_life_fridge", "shelf_life_freezer", "shelf_life_pantry", "shelf_life_counter"):
+        try:
+            cursor.execute(f"ALTER TABLE fridge_items ADD COLUMN {col} INTEGER")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
     
     # Purchase history table for shopping recommendations
     cursor.execute("""
@@ -104,15 +115,20 @@ def add_item(item: FridgeItem) -> int:
     cursor = conn.cursor()
     
     cursor.execute("""
-        INSERT INTO fridge_items (name, purchase_date, shelf_life_days, cost, category, storage_location)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO fridge_items (name, purchase_date, shelf_life_days, cost, category, storage_location,
+                                  shelf_life_fridge, shelf_life_freezer, shelf_life_pantry, shelf_life_counter)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         item.name,
         item.purchase_date.isoformat(),
         item.shelf_life_days,
         item.cost,
         item.category,
-        item.storage_location
+        item.storage_location,
+        item.shelf_life_fridge,
+        item.shelf_life_freezer,
+        item.shelf_life_pantry,
+        item.shelf_life_counter,
     ))
     
     item_id = cursor.lastrowid
@@ -130,15 +146,20 @@ def add_items(items: List[FridgeItem]) -> List[int]:
     item_ids = []
     for item in items:
         cursor.execute("""
-            INSERT INTO fridge_items (name, purchase_date, shelf_life_days, cost, category, storage_location)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO fridge_items (name, purchase_date, shelf_life_days, cost, category, storage_location,
+                                      shelf_life_fridge, shelf_life_freezer, shelf_life_pantry, shelf_life_counter)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             item.name,
             item.purchase_date.isoformat(),
             item.shelf_life_days,
             item.cost,
             item.category,
-            item.storage_location
+            item.storage_location,
+            item.shelf_life_fridge,
+            item.shelf_life_freezer,
+            item.shelf_life_pantry,
+            item.shelf_life_counter,
         ))
         item_ids.append(cursor.lastrowid)
     
@@ -159,14 +180,18 @@ def get_all_items(storage_location: Optional[str] = None) -> List[FridgeItem]:
     
     if storage_location:
         cursor.execute("""
-            SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage, storage_location, ignore_expiry
+            SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage,
+                   storage_location, ignore_expiry,
+                   shelf_life_fridge, shelf_life_freezer, shelf_life_pantry, shelf_life_counter
             FROM fridge_items
             WHERE storage_location = ?
             ORDER BY purchase_date DESC
         """, (storage_location,))
     else:
         cursor.execute("""
-            SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage, storage_location, ignore_expiry
+            SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage,
+                   storage_location, ignore_expiry,
+                   shelf_life_fridge, shelf_life_freezer, shelf_life_pantry, shelf_life_counter
             FROM fridge_items
             ORDER BY purchase_date DESC
         """)
@@ -185,7 +210,11 @@ def get_all_items(storage_location: Optional[str] = None) -> List[FridgeItem]:
             category=row["category"],
             remaining_percentage=row["remaining_percentage"] or 100,
             storage_location=row["storage_location"] or "fridge",
-            ignore_expiry=bool(row["ignore_expiry"]) if row["ignore_expiry"] is not None else False
+            ignore_expiry=bool(row["ignore_expiry"]) if row["ignore_expiry"] is not None else False,
+            shelf_life_fridge=row["shelf_life_fridge"],
+            shelf_life_freezer=row["shelf_life_freezer"],
+            shelf_life_pantry=row["shelf_life_pantry"],
+            shelf_life_counter=row["shelf_life_counter"],
         ))
     
     return items
@@ -197,7 +226,9 @@ def get_item_by_id(item_id: int) -> Optional[FridgeItem]:
     cursor = conn.cursor()
     
     cursor.execute("""
-        SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage, storage_location, ignore_expiry
+        SELECT id, name, purchase_date, shelf_life_days, cost, category, remaining_percentage,
+               storage_location, ignore_expiry,
+               shelf_life_fridge, shelf_life_freezer, shelf_life_pantry, shelf_life_counter
         FROM fridge_items
         WHERE id = ?
     """, (item_id,))
@@ -215,7 +246,11 @@ def get_item_by_id(item_id: int) -> Optional[FridgeItem]:
             category=row["category"],
             remaining_percentage=row["remaining_percentage"] or 100,
             storage_location=row["storage_location"] or "fridge",
-            ignore_expiry=bool(row["ignore_expiry"]) if row["ignore_expiry"] is not None else False
+            ignore_expiry=bool(row["ignore_expiry"]) if row["ignore_expiry"] is not None else False,
+            shelf_life_fridge=row["shelf_life_fridge"],
+            shelf_life_freezer=row["shelf_life_freezer"],
+            shelf_life_pantry=row["shelf_life_pantry"],
+            shelf_life_counter=row["shelf_life_counter"],
         )
     return None
 
@@ -262,7 +297,9 @@ def update_item(item_id: int, **kwargs) -> bool:
         return False
     
     # Build the SET clause dynamically based on provided kwargs
-    valid_fields = {'name', 'shelf_life_days', 'cost', 'category', 'purchase_date', 'remaining_percentage', 'storage_location', 'ignore_expiry'}
+    valid_fields = {'name', 'shelf_life_days', 'cost', 'category', 'purchase_date', 'remaining_percentage',
+                    'storage_location', 'ignore_expiry',
+                    'shelf_life_fridge', 'shelf_life_freezer', 'shelf_life_pantry', 'shelf_life_counter'}
     updates = []
     values = []
     
