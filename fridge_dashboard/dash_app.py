@@ -31,19 +31,24 @@ app = dash.Dash(
 server = app.server
 
 
-def get_status_class(freshness_pct: float) -> str:
-    """Get CSS class based on freshness percentage."""
-    if freshness_pct >= 60:
-        return "fresh"
-    elif freshness_pct >= 30:
-        return "warning"
-    else:
+def get_status_class(freshness_pct: float, days_remaining: int = None) -> str:
+    """Get CSS class based on freshness percentage and days remaining.
+    
+    An item is only 'danger' (expired) when days_remaining <= 0.
+    Items with days remaining but low freshness % are 'warning' (use soon).
+    """
+    # If days_remaining is provided, use it as the primary expired check
+    if days_remaining is not None and days_remaining <= 0:
         return "danger"
+    if freshness_pct >= 40:
+        return "fresh"
+    else:
+        return "warning"
 
 
 def create_item_card(item: FridgeItem) -> html.Div:
     """Create a card component for a food item with editable name and shelf life."""
-    status_class = "no-expiry" if item.ignore_expiry else get_status_class(item.freshness_percentage)
+    status_class = "no-expiry" if item.ignore_expiry else get_status_class(item.freshness_percentage, item.days_remaining)
     
     # Build shelf life section - show differently for items with ignored expiry
     if item.ignore_expiry:
@@ -193,9 +198,9 @@ def create_stats_cards(items: List[FridgeItem]) -> html.Div:
     # Items with ignore_expiry are counted as "fresh" and not in warning/danger
     no_expiry = len([i for i in items if i.ignore_expiry])
     tracked_items = [i for i in items if not i.ignore_expiry]
-    fresh = len([i for i in tracked_items if i.freshness_percentage >= 60]) + no_expiry
-    warning = len([i for i in tracked_items if 30 <= i.freshness_percentage < 60])
-    danger = len([i for i in tracked_items if i.freshness_percentage < 30])
+    danger = len([i for i in tracked_items if i.days_remaining <= 0])
+    warning = len([i for i in tracked_items if i.days_remaining > 0 and i.freshness_percentage < 40])
+    fresh = len([i for i in tracked_items if i.days_remaining > 0 and i.freshness_percentage >= 40]) + no_expiry
     
     return html.Div(
         className="stats-container",
@@ -250,8 +255,8 @@ def create_empty_state() -> html.Div:
 
 def create_compact_food_badge(item: FridgeItem) -> html.Div:
     """Create a compact badge for a food item that opens edit modal on click."""
-    status_class = "no-expiry" if item.ignore_expiry else get_status_class(item.freshness_percentage)
-    days_text = "♾️" if item.ignore_expiry else (f"{item.days_remaining}d" if item.days_remaining >= 0 else "Exp")
+    status_class = "no-expiry" if item.ignore_expiry else get_status_class(item.freshness_percentage, item.days_remaining)
+    days_text = "♾️" if item.ignore_expiry else (f"{item.days_remaining}d" if item.days_remaining > 0 else "Exp")
     
     return html.Div(
         className=f"food-badge {status_class}",
@@ -1657,7 +1662,7 @@ def create_edit_modal_body(item: FridgeItem) -> html.Div:
         ]),
         html.Div(className="edit-item-info", children=[
             html.Div([html.Span(item.status_emoji, style={"marginRight": "8px"}),
-                      html.Span(item.status_text, className=f"status-badge {get_status_class(item.freshness_percentage)}")]),
+                      html.Span(item.status_text, className=f"status-badge {get_status_class(item.freshness_percentage, item.days_remaining)}")]),
             html.Div(f"Purchased: {item.purchase_date.strftime('%b %d, %Y')}", className="edit-info-text"),
             html.Div(f"Days remaining: {'∞' if item.ignore_expiry else item.days_remaining}", className="edit-info-text"),
             html.Div(f"Category: {item.category or 'Other'}", className="edit-info-text")

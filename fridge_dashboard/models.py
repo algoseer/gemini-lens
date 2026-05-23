@@ -82,39 +82,39 @@ class FridgeItem:
         """Get color based on freshness level."""
         if self.ignore_expiry:
             return "#6c757d"  # Gray - neutral color for non-tracked items
+        if self.days_remaining <= 0:
+            return "#dc3545"  # Red - actually expired
         pct = self.freshness_percentage
-        if pct >= 60:
+        if pct >= 40:
             return "#28a745"  # Green
-        elif pct >= 30:
-            return "#ffc107"  # Yellow/Amber
         else:
-            return "#dc3545"  # Red
+            return "#ffc107"  # Yellow/Amber - low but not expired
     
     @property
     def status_emoji(self) -> str:
         """Get emoji based on freshness level."""
         if self.ignore_expiry:
             return "♾️"  # Infinity symbol for non-tracked items
-        pct = self.freshness_percentage
-        if pct >= 60:
-            return "🟢"
-        elif pct >= 30:
-            return "🟡"
-        else:
+        if self.days_remaining <= 0:
             return "🔴"
+        pct = self.freshness_percentage
+        if pct >= 40:
+            return "🟢"
+        else:
+            return "🟡"
     
     @property
     def status_text(self) -> str:
         """Get status text based on freshness level."""
         if self.ignore_expiry:
             return "No Expiry"
+        if self.days_remaining <= 0:
+            return "Expired"
         pct = self.freshness_percentage
-        if pct >= 60:
+        if pct >= 40:
             return "Fresh"
-        elif pct >= 30:
-            return "Use Soon"
         else:
-            return "Expired/Bad"
+            return "Use Soon"
     
     @property
     def storage_display(self) -> str:
