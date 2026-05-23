@@ -23,7 +23,8 @@ app = dash.Dash(
     __name__,
     external_stylesheets=[dbc.themes.BOOTSTRAP],
     suppress_callback_exceptions=True,
-    title="🍎 Food Freshness Tracker"
+    title="🍎 Food Freshness Tracker",
+    update_title=None  # Prevents "Updating..." flicker in the browser tab title
 )
 
 # Make server accessible for running
