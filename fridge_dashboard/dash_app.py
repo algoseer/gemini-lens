@@ -23,7 +23,10 @@ app = dash.Dash(
     external_stylesheets=[dbc.themes.BOOTSTRAP],
     suppress_callback_exceptions=True,
     title="🍎 Food Freshness Tracker",
-    update_title=None  # Prevents "Updating..." flicker in the browser tab title
+    update_title=None,  # Prevents "Updating..." flicker in the browser tab title
+    # Increase server-side callback timeout to 120 seconds (default is 30s)
+    # This prevents "server did not respond" errors during long Gemini API calls
+    server_timeout=120,
 )
 
 # Make server accessible for running
