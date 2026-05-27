@@ -16,7 +16,6 @@ from google.genai import types
 
 from .models import FridgeItem
 from . import database as db
-from .gemini_service import _classify_api_error
 
 # Load .env file from project root
 env_path = Path(__file__).parent.parent / ".env"
@@ -150,8 +149,7 @@ class RecipeChatEngine:
             return assistant_message
             
         except Exception as e:
-            classified = _classify_api_error(e)
-            return classified["user_message"]
+            return f"❌ Error generating response: {str(e)}"
     
     def clear_history(self):
         """Clear the conversation history."""
@@ -346,9 +344,8 @@ Number them 1-5. Keep descriptions brief!"""
                 self._is_streaming = False
                 
         except Exception as e:
-            classified = _classify_api_error(e)
             with self._streaming_lock:
-                self._streaming_error = classified["user_message"]
+                self._streaming_error = f"❌ Error generating response: {str(e)}"
                 self._streaming_complete = True
                 self._is_streaming = False
     
