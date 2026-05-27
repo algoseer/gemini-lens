@@ -3,6 +3,8 @@
 import base64
 import json
 import os
+import threading
+import uuid
 from datetime import date, datetime
 from typing import List, Dict, Any
 
@@ -16,6 +18,16 @@ from .gemini_service import process_receipt_to_fridge_items
 
 # Check if debug mode is enabled via environment variable
 DEBUG_MODE = os.environ.get("DEBUG_MODE", "false").lower() in ("true", "1", "yes")
+
+# ---------------------------------------------------------------------------
+# Background job store for receipt processing
+# Keys are job_id strings; values are dicts with keys:
+#   status: "running" | "done" | "error"
+#   result: dict with keys fridge_items, extracted_date, debug_info (when done)
+#   error:  str (when status == "error")
+# ---------------------------------------------------------------------------
+_receipt_jobs: Dict[str, Dict] = {}
+_receipt_jobs_lock = threading.Lock()
 
 # Initialize the Dash app
 app = dash.Dash(
@@ -587,7 +599,16 @@ app.layout = html.Div([
         id="auto-refresh",
         interval=60 * 1000,  # 60 seconds
         n_intervals=0
-    )
+    ),
+
+    # Background receipt job store and polling interval
+    dcc.Store(id="receipt-job-store", data=None),
+    dcc.Interval(
+        id="receipt-poll-interval",
+        interval=2000,   # poll every 2 seconds
+        n_intervals=0,
+        disabled=True    # starts disabled; enabled when a job is running
+    ),
 ])
 
 
@@ -706,6 +727,26 @@ def create_debug_panel(debug_info: Dict[str, Any]) -> html.Div:
     )
 
 
+def _run_receipt_job(job_id: str, image_data: bytes, fallback_date: date) -> None:
+    """Background worker: process receipt and store result in _receipt_jobs."""
+    try:
+        fridge_items, extracted_date, debug_info = process_receipt_to_fridge_items(image_data, fallback_date)
+        with _receipt_jobs_lock:
+            _receipt_jobs[job_id] = {
+                "status": "done",
+                "fridge_items": [item.to_dict() for item in fridge_items],
+                "extracted_date": extracted_date.isoformat() if extracted_date else None,
+                "fallback_date": fallback_date.isoformat(),
+                "debug_info": debug_info,
+            }
+    except Exception as e:
+        with _receipt_jobs_lock:
+            _receipt_jobs[job_id] = {
+                "status": "error",
+                "error": str(e),
+            }
+
+
 def create_parsing_results_table(fridge_items: List[FridgeItem], scanned_date: date, is_date_extracted: bool) -> html.Div:
     """Create a detailed results table showing parsed items with editable date.
     
@@ -815,213 +856,204 @@ def create_parsing_results_table(fridge_items: List[FridgeItem], scanned_date: d
     )
 
 
+# Store for the current receipt job ID (used by polling callback)
+_POLL_INTERVAL_MS = 2000  # 2 seconds
+
+
 @callback(
     [Output("upload-status", "children"),
      Output("pending-scanned-items", "data"),
-     Output("alert-container", "children")],
+     Output("alert-container", "children"),
+     Output("receipt-job-store", "data"),
+     Output("receipt-poll-interval", "disabled", allow_duplicate=True)],
     [Input("upload-receipt", "contents")],
     [State("upload-receipt", "filename"),
      State("purchase-date-picker", "date")],
     prevent_initial_call=True
 )
 def process_receipt(contents, filename, purchase_date_str):
-    """Process uploaded receipt image and store items for confirmation."""
+    """Start background receipt processing and return immediately with a spinner."""
     if contents is None:
-        return dash.no_update, dash.no_update, dash.no_update
-    
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
     try:
-        # Step 1: Decode the uploaded image
         content_type, content_string = contents.split(",")
         image_data = base64.b64decode(content_string)
-        
-        # Parse fallback purchase date from date picker
+
         if purchase_date_str:
             fallback_date = datetime.fromisoformat(purchase_date_str).date()
         else:
             fallback_date = date.today()
-        
-        # Process receipt with Gemini (this does the actual work)
-        # Now returns tuple of (items, extracted_date, debug_info)
-        fridge_items, extracted_date, debug_info = process_receipt_to_fridge_items(image_data, fallback_date)
-        
-        # Determine which date was used
-        if extracted_date:
-            date_source = f"📅 Date extracted from receipt: {extracted_date.strftime('%b %d, %Y')}"
-            date_class = "date-extracted"
-        else:
-            date_source = f"📅 Using selected date: {fallback_date.strftime('%b %d, %Y')}"
-            date_class = "date-fallback"
-        
-        if not fridge_items:
-            # Check if there's a classified API error to surface to the user
-            api_error_msg = debug_info.get("user_message")
-            error_type = debug_info.get("error_type")
 
-            # Choose step icon/class and alert class based on error type
-            if error_type == "quota":
-                step_class = "progress-step error"
-                step_icon = "✗"
-                step_text = "API quota exceeded"
-                alert_class = "alert alert-error"
-                alert_msg = api_error_msg
-            elif error_type == "auth":
-                step_class = "progress-step error"
-                step_icon = "✗"
-                step_text = "API authentication failed"
-                alert_class = "alert alert-error"
-                alert_msg = api_error_msg
-            elif error_type == "network":
-                step_class = "progress-step error"
-                step_icon = "✗"
-                step_text = "API unavailable"
-                alert_class = "alert alert-error"
-                alert_msg = api_error_msg
-            elif error_type == "parse":
-                step_class = "progress-step warning"
-                step_icon = "⚠"
-                step_text = "Could not parse AI response"
-                alert_class = "alert alert-error"
-                alert_msg = api_error_msg
-            elif api_error_msg:
-                step_class = "progress-step error"
-                step_icon = "✗"
-                step_text = "Processing failed"
-                alert_class = "alert alert-error"
-                alert_msg = api_error_msg
-            else:
-                step_class = "progress-step warning"
-                step_icon = "⚠"
-                step_text = "No food items found"
-                alert_class = "alert alert-info"
-                alert_msg = ("ℹ️ No food items found in the receipt. "
-                             "Make sure the image is clear and contains grocery items.")
+        # Create a job ID and start background thread
+        job_id = str(uuid.uuid4())
+        with _receipt_jobs_lock:
+            _receipt_jobs[job_id] = {"status": "running"}
 
-            status = html.Div([
-                html.Div(
-                    className="progress-container",
-                    children=[
-                        html.Div(
-                            className="progress-step completed",
-                            children=[
-                                html.Span("✓", className="step-icon"),
-                                html.Span("Image uploaded", className="step-text")
-                            ]
-                        ),
-                        html.Div(
-                            className="progress-step completed",
-                            children=[
-                                html.Span("✓", className="step-icon"),
-                                html.Span("Receipt analyzed", className="step-text")
-                            ]
-                        ),
-                        html.Div(
-                            className=step_class,
-                            children=[
-                                html.Span(step_icon, className="step-icon"),
-                                html.Span(step_text, className="step-text")
-                            ]
-                        )
-                    ]
-                ),
-                # Debug panel (collapsible) - show even when no items found
-                create_debug_panel(debug_info)
-            ])
-            alert = html.Div(
-                className=alert_class,
-                children=[alert_msg]
-            )
-            return status, None, alert
-        
-        # Determine which date was used for scanned items
-        is_date_extracted = extracted_date is not None
-        scanned_date = extracted_date if extracted_date else fallback_date
-        
-        # DON'T save items yet - store them as pending for user to review and confirm
-        # Convert items to serializable format for storage
-        pending_items_data = {
-            "items": [item.to_dict() for item in fridge_items],
-            "scanned_date": scanned_date.isoformat(),
-            "is_date_extracted": is_date_extracted,
-            "debug_info": debug_info
-        }
-        
-        # Create progress display with results (items not saved yet)
-        status = html.Div([
-            html.Div(
-                className="progress-container",
-                children=[
-                    html.Div(
-                        className="progress-step completed",
-                        children=[
-                            html.Span("✓", className="step-icon"),
-                            html.Span("Image uploaded", className="step-text")
-                        ]
-                    ),
-                    html.Div(
-                        className="progress-step completed",
-                        children=[
-                            html.Span("✓", className="step-icon"),
-                            html.Span(f"Found {len(fridge_items)} food items", className="step-text")
-                        ]
-                    ),
-                    html.Div(
-                        className="progress-step completed",
-                        children=[
-                            html.Span("✓", className="step-icon"),
-                            html.Span("Shelf life estimates retrieved", className="step-text")
-                        ]
-                    ),
-                    html.Div(
-                        className="progress-step pending",
-                        children=[
-                            html.Span("⏳", className="step-icon"),
-                            html.Span("Awaiting confirmation", className="step-text")
-                        ]
-                    )
-                ]
-            ),
-            # Show detailed results table with editable date and confirm/discard buttons
-            create_parsing_results_table(fridge_items, scanned_date, is_date_extracted),
-            # Debug panel (collapsible)
-            create_debug_panel(debug_info)
-        ])
-        
-        # Info alert prompting user to confirm
-        alert = html.Div(
-            className="alert alert-info",
-            children=[
-                f"📋 Found {len(fridge_items)} items. Review the date and click 'Confirm & Save' to add them to your food tracker."
-            ]
+        t = threading.Thread(
+            target=_run_receipt_job,
+            args=(job_id, image_data, fallback_date),
+            daemon=True
         )
-        
-        return status, pending_items_data, alert
-        
-    except Exception as e:
-        # Error state
+        t.start()
+
+        # Return immediately with a "processing" spinner; enable the poll interval
         status = html.Div(
             className="progress-container",
             children=[
-                html.Div(
-                    className="progress-step completed",
-                    children=[
-                        html.Span("✓", className="step-icon"),
-                        html.Span("Image uploaded", className="step-text")
-                    ]
-                ),
-                html.Div(
-                    className="progress-step error",
-                    children=[
-                        html.Span("✗", className="step-icon"),
-                        html.Span("Processing failed", className="step-text")
-                    ]
-                )
+                html.Div(className="progress-step completed", children=[
+                    html.Span("✓", className="step-icon"),
+                    html.Span("Image uploaded", className="step-text")
+                ]),
+                html.Div(className="progress-step running", children=[
+                    html.Span("⏳", className="step-icon"),
+                    html.Span("Analyzing receipt with Gemini AI…", className="step-text")
+                ]),
             ]
         )
         alert = html.Div(
-            className="alert alert-error",
-            children=[f"❌ Error processing receipt: {str(e)}"]
+            className="alert alert-info",
+            children=["🔍 Processing your receipt. This may take up to 30 seconds…"]
         )
-        return status, None, alert
+        return status, None, alert, job_id, False  # False = interval enabled
+
+    except Exception as e:
+        status = html.Div(className="progress-container", children=[
+            html.Div(className="progress-step error", children=[
+                html.Span("✗", className="step-icon"),
+                html.Span("Upload failed", className="step-text")
+            ])
+        ])
+        alert = html.Div(className="alert alert-error",
+                         children=[f"❌ Error reading image: {str(e)}"])
+        return status, None, alert, None, True  # True = interval stays disabled
+
+
+@callback(
+    [Output("upload-status", "children", allow_duplicate=True),
+     Output("pending-scanned-items", "data", allow_duplicate=True),
+     Output("alert-container", "children", allow_duplicate=True),
+     Output("receipt-job-store", "data", allow_duplicate=True),
+     Output("receipt-poll-interval", "disabled")],
+    Input("receipt-poll-interval", "n_intervals"),
+    State("receipt-job-store", "data"),
+    prevent_initial_call=True
+)
+def poll_receipt_job(n_intervals, job_id):
+    """Poll the background job store and update UI when done."""
+    if not job_id:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, True
+
+    with _receipt_jobs_lock:
+        job = _receipt_jobs.get(job_id)
+
+    if job is None or job.get("status") == "running":
+        # Still running — keep polling
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, False
+
+    # Job finished — clean up
+    with _receipt_jobs_lock:
+        _receipt_jobs.pop(job_id, None)
+
+    if job.get("status") == "error":
+        status = html.Div(className="progress-container", children=[
+            html.Div(className="progress-step completed", children=[
+                html.Span("✓", className="step-icon"),
+                html.Span("Image uploaded", className="step-text")
+            ]),
+            html.Div(className="progress-step error", children=[
+                html.Span("✗", className="step-icon"),
+                html.Span("Processing failed", className="step-text")
+            ])
+        ])
+        alert = html.Div(className="alert alert-error",
+                         children=[f"❌ Error processing receipt: {job.get('error', 'Unknown error')}"])
+        return status, None, alert, None, True
+
+    # status == "done"
+    fridge_items_data = job.get("fridge_items", [])
+    extracted_date_str = job.get("extracted_date")
+    fallback_date_str = job.get("fallback_date")
+    debug_info = job.get("debug_info", {})
+
+    extracted_date = date.fromisoformat(extracted_date_str) if extracted_date_str else None
+    fallback_date = date.fromisoformat(fallback_date_str) if fallback_date_str else date.today()
+
+    if not fridge_items_data:
+        api_error_msg = debug_info.get("user_message")
+        error_type = debug_info.get("error_type")
+        if error_type in ("quota", "auth", "network", "unknown") or api_error_msg:
+            step_class, step_icon, step_text = "progress-step error", "✗", "Processing failed"
+            alert_class = "alert alert-error"
+            alert_msg = api_error_msg or "❌ Gemini API error."
+        elif error_type == "parse":
+            step_class, step_icon, step_text = "progress-step warning", "⚠", "Could not parse AI response"
+            alert_class = "alert alert-error"
+            alert_msg = api_error_msg or "❌ Could not parse AI response."
+        else:
+            step_class, step_icon, step_text = "progress-step warning", "⚠", "No food items found"
+            alert_class = "alert alert-info"
+            alert_msg = ("ℹ️ No food items found in the receipt. "
+                         "Make sure the image is clear and contains grocery items.")
+        status = html.Div([
+            html.Div(className="progress-container", children=[
+                html.Div(className="progress-step completed", children=[
+                    html.Span("✓", className="step-icon"),
+                    html.Span("Image uploaded", className="step-text")
+                ]),
+                html.Div(className="progress-step completed", children=[
+                    html.Span("✓", className="step-icon"),
+                    html.Span("Receipt analyzed", className="step-text")
+                ]),
+                html.Div(className=step_class, children=[
+                    html.Span(step_icon, className="step-icon"),
+                    html.Span(step_text, className="step-text")
+                ])
+            ]),
+            create_debug_panel(debug_info)
+        ])
+        alert = html.Div(className=alert_class, children=[alert_msg])
+        return status, None, alert, None, True
+
+    # Reconstruct FridgeItem objects
+    fridge_items = [FridgeItem.from_dict(d) for d in fridge_items_data]
+    is_date_extracted = extracted_date is not None
+    scanned_date = extracted_date if extracted_date else fallback_date
+
+    pending_items_data = {
+        "items": fridge_items_data,
+        "scanned_date": scanned_date.isoformat(),
+        "is_date_extracted": is_date_extracted,
+        "debug_info": debug_info
+    }
+
+    status = html.Div([
+        html.Div(className="progress-container", children=[
+            html.Div(className="progress-step completed", children=[
+                html.Span("✓", className="step-icon"),
+                html.Span("Image uploaded", className="step-text")
+            ]),
+            html.Div(className="progress-step completed", children=[
+                html.Span("✓", className="step-icon"),
+                html.Span(f"Found {len(fridge_items)} food items", className="step-text")
+            ]),
+            html.Div(className="progress-step completed", children=[
+                html.Span("✓", className="step-icon"),
+                html.Span("Shelf life estimates retrieved", className="step-text")
+            ]),
+            html.Div(className="progress-step pending", children=[
+                html.Span("⏳", className="step-icon"),
+                html.Span("Awaiting confirmation", className="step-text")
+            ])
+        ]),
+        create_parsing_results_table(fridge_items, scanned_date, is_date_extracted),
+        create_debug_panel(debug_info)
+    ])
+    alert = html.Div(
+        className="alert alert-info",
+        children=[f"📋 Found {len(fridge_items)} items. Review the date and click 'Confirm & Save' to add them to your food tracker."]
+    )
+    return status, pending_items_data, alert, None, True
 
 
 @callback(
