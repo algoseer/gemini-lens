@@ -3,3 +3,4 @@ dash-bootstrap-components
 google-genai
 pillow
 python-dotenv
+gunicorn

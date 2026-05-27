@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 8050
 
-CMD ["python", "-m", "fridge_dashboard.dash_app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8050", "--timeout", "120", "--workers", "2", "fridge_dashboard.dash_app:server"]
