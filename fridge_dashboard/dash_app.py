@@ -848,7 +848,49 @@ def process_receipt(contents, filename, purchase_date_str):
             date_class = "date-fallback"
         
         if not fridge_items:
-            # No items found - show info message with debug panel
+            # Check if there's a classified API error to surface to the user
+            api_error_msg = debug_info.get("user_message")
+            error_type = debug_info.get("error_type")
+
+            # Choose step icon/class and alert class based on error type
+            if error_type == "quota":
+                step_class = "progress-step error"
+                step_icon = "✗"
+                step_text = "API quota exceeded"
+                alert_class = "alert alert-error"
+                alert_msg = api_error_msg
+            elif error_type == "auth":
+                step_class = "progress-step error"
+                step_icon = "✗"
+                step_text = "API authentication failed"
+                alert_class = "alert alert-error"
+                alert_msg = api_error_msg
+            elif error_type == "network":
+                step_class = "progress-step error"
+                step_icon = "✗"
+                step_text = "API unavailable"
+                alert_class = "alert alert-error"
+                alert_msg = api_error_msg
+            elif error_type == "parse":
+                step_class = "progress-step warning"
+                step_icon = "⚠"
+                step_text = "Could not parse AI response"
+                alert_class = "alert alert-error"
+                alert_msg = api_error_msg
+            elif api_error_msg:
+                step_class = "progress-step error"
+                step_icon = "✗"
+                step_text = "Processing failed"
+                alert_class = "alert alert-error"
+                alert_msg = api_error_msg
+            else:
+                step_class = "progress-step warning"
+                step_icon = "⚠"
+                step_text = "No food items found"
+                alert_class = "alert alert-info"
+                alert_msg = ("ℹ️ No food items found in the receipt. "
+                             "Make sure the image is clear and contains grocery items.")
+
             status = html.Div([
                 html.Div(
                     className="progress-container",
@@ -868,10 +910,10 @@ def process_receipt(contents, filename, purchase_date_str):
                             ]
                         ),
                         html.Div(
-                            className="progress-step warning",
+                            className=step_class,
                             children=[
-                                html.Span("⚠", className="step-icon"),
-                                html.Span("No food items found", className="step-text")
+                                html.Span(step_icon, className="step-icon"),
+                                html.Span(step_text, className="step-text")
                             ]
                         )
                     ]
@@ -880,11 +922,8 @@ def process_receipt(contents, filename, purchase_date_str):
                 create_debug_panel(debug_info)
             ])
             alert = html.Div(
-                className="alert alert-info",
-                children=[
-                    "ℹ️ No food items found in the receipt. ",
-                    "Make sure the image is clear and contains grocery items."
-                ]
+                className=alert_class,
+                children=[alert_msg]
             )
             return status, None, alert
         

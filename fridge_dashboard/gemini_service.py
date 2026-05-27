@@ -100,6 +100,48 @@ Output ONLY valid JSON in this exact format, no other text:
 """
 
 
+def _classify_api_error(exc: Exception) -> Dict[str, str]:
+    """
+    Classify a Gemini API exception into a user-friendly message and error type.
+
+    Returns a dict with keys:
+        - "type": one of "quota", "auth", "network", "unknown"
+        - "user_message": human-readable message suitable for the frontend
+    """
+    err_str = str(exc).lower()
+    exc_type = type(exc).__name__
+
+    if "resource_exhausted" in err_str or "429" in err_str or "quota" in err_str or "rate" in err_str:
+        return {
+            "type": "quota",
+            "user_message": (
+                "⚠️ Gemini API quota exceeded. The free-tier limit has been reached. "
+                "Please wait a few minutes and try again, or upgrade your plan at "
+                "https://aistudio.google.com."
+            ),
+        }
+    if "unauthenticated" in err_str or "api_key" in err_str or "invalid" in err_str or "401" in err_str or "403" in err_str:
+        return {
+            "type": "auth",
+            "user_message": (
+                "🔑 Gemini API authentication failed. Please check that your GOOGLE_API_KEY "
+                "is valid and has not expired."
+            ),
+        }
+    if "deadline" in err_str or "timeout" in err_str or "unavailable" in err_str or "503" in err_str or "504" in err_str:
+        return {
+            "type": "network",
+            "user_message": (
+                "🌐 Gemini API is temporarily unavailable or timed out. "
+                "Please check your internet connection and try again."
+            ),
+        }
+    return {
+        "type": "unknown",
+        "user_message": f"❌ Gemini API error: {str(exc)}",
+    }
+
+
 def _get_image_mime_type(image_data: bytes) -> str:
     """Detect image MIME type from bytes."""
     # Check magic bytes for common image formats
@@ -184,11 +226,16 @@ def parse_receipt_image(image_data: bytes) -> Tuple[List[Dict[str, Any]], Option
         
     except json.JSONDecodeError as e:
         debug_info["error"] = f"JSON parse error: {str(e)}"
+        debug_info["error_type"] = "parse"
+        debug_info["user_message"] = "❌ Could not parse the AI response. Please try uploading the receipt again."
         print(f"Error parsing Gemini response as JSON: {e}")
         print(f"Response was: {response.text if 'response' in dir() else 'N/A'}")
         return [], None, debug_info
     except Exception as e:
+        classified = _classify_api_error(e)
         debug_info["error"] = f"Processing error: {str(e)}"
+        debug_info["error_type"] = classified["type"]
+        debug_info["user_message"] = classified["user_message"]
         print(f"Error processing receipt: {e}")
         return [], None, debug_info
 
