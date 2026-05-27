@@ -7,8 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: fridge-dashboard
     privileged: true
-    ports:
-      - "8050:8050"
+    network_mode: host
     volumes:
       - ./data:/app/data
     env_file:
