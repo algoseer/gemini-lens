@@ -29,8 +29,8 @@ load_dotenv(env_path)
 api_key = os.environ.get("GOOGLE_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else None
 
-# Use Gemini 2.0 Flash - faster and more reliable than 2.5 Flash in server environments
-MODEL_ID = "gemini-2.0-flash"
+# Use Gemini 2.5 Flash
+MODEL_ID = "gemini-2.5-flash"
 
 
 RECEIPT_PARSING_PROMPT = """
