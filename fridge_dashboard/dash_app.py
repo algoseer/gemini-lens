@@ -602,14 +602,47 @@ app.layout = html.Div([
     ),
 
     # Background receipt job store and polling interval
-    dcc.Store(id="receipt-job-store", data=None),
+    # storage_type="local" persists the job ID across tab suspensions (phone lock/unlock)
+    dcc.Store(id="receipt-job-store", data=None, storage_type="local"),
     dcc.Interval(
         id="receipt-poll-interval",
         interval=2000,   # poll every 2 seconds
         n_intervals=0,
         disabled=True    # starts disabled; enabled when a job is running
     ),
+    # Hidden div used as target for the visibility-change clientside callback
+    html.Div(id="visibility-change-trigger", style={"display": "none"}),
 ])
+
+
+# Clientside callback: when the page becomes visible again (phone unlock),
+# re-enable the poll interval if there's a pending job ID in the store.
+app.clientside_callback(
+    """
+    function(job_id) {
+        // Set up a one-time visibilitychange listener that bumps n_intervals
+        // by toggling disabled off/on so Dash re-fires the interval callback.
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden && job_id) {
+                // Force the interval to fire by briefly enabling it
+                var interval = document.getElementById('receipt-poll-interval');
+                if (interval) {
+                    // Dash stores interval state in the component props;
+                    // we can't directly trigger it from JS, but we can
+                    // dispatch a custom event that the interval picks up.
+                    // Instead, we reload the page if a job was pending.
+                    // This is the most reliable approach on mobile.
+                    window.location.reload();
+                }
+            }
+        }, { once: true });
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("visibility-change-trigger", "children"),
+    Input("receipt-job-store", "data"),
+    prevent_initial_call=True
+)
 
 
 def create_food_tab_content():
