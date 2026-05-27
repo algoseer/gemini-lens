@@ -29,8 +29,8 @@ load_dotenv(env_path)
 api_key = os.environ.get("GOOGLE_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else None
 
-# Use Gemini 2.5 Flash for fast responses
-MODEL_ID = "gemini-2.5-flash"
+# Use Gemini 2.0 Flash - faster and more reliable than 2.5 Flash in server environments
+MODEL_ID = "gemini-2.0-flash"
 
 
 RECEIPT_PARSING_PROMPT = """
@@ -188,10 +188,13 @@ def parse_receipt_image(image_data: bytes) -> Tuple[List[Dict[str, Any]], Option
         # Create image part using the new SDK
         image_part = types.Part.from_bytes(data=image_data, mime_type=mime_type)
         
-        # Call Gemini API with the new SDK
+        # Call Gemini API with explicit timeout (60s) so it never hangs indefinitely
         response = client.models.generate_content(
             model=MODEL_ID,
-            contents=[RECEIPT_PARSING_PROMPT, image_part]
+            contents=[RECEIPT_PARSING_PROMPT, image_part],
+            config=types.GenerateContentConfig(
+                http_options=types.HttpOptions(timeout=60000)  # 60 seconds in ms
+            )
         )
         
         # Store raw response
@@ -264,7 +267,10 @@ def get_shelf_life_for_items(item_names: List[str]) -> Dict[str, Any]:
         
         response = client.models.generate_content(
             model=MODEL_ID,
-            contents=prompt
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                http_options=types.HttpOptions(timeout=60000)  # 60 seconds in ms
+            )
         )
         
         response_text = response.text.strip()
