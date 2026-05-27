@@ -13,6 +13,7 @@ import dash_bootstrap_components as dbc
 from . import database as db
 from .models import FridgeItem, PurchaseHistoryItem, ShoppingListItem, STORAGE_LOCATIONS, STORAGE_DISPLAY_NAMES
 from .gemini_service import process_receipt_to_fridge_items
+from .recipe_chat_service import RecipeChatEngine
 
 # Check if debug mode is enabled via environment variable
 DEBUG_MODE = os.environ.get("DEBUG_MODE", "false").lower() in ("true", "1", "yes")
@@ -22,79 +23,26 @@ app = dash.Dash(
     __name__,
     external_stylesheets=[dbc.themes.BOOTSTRAP],
     suppress_callback_exceptions=True,
-    title="🍎 Food Freshness Tracker",
-    update_title=None  # Prevents "Updating..." flicker in the browser tab title
+    title="🍎 Food Freshness Tracker"
 )
 
 # Make server accessible for running
 server = app.server
 
 
-def get_status_class(freshness_pct: float, days_remaining: int = None) -> str:
-    """Get CSS class based on freshness percentage and days remaining.
-    
-    An item is only 'danger' (expired) when days_remaining <= 0.
-    Items with days remaining but low freshness % are 'warning' (use soon).
-    """
-    # If days_remaining is provided, use it as the primary expired check
-    if days_remaining is not None and days_remaining <= 0:
-        return "danger"
-    if freshness_pct >= 40:
+def get_status_class(freshness_pct: float) -> str:
+    """Get CSS class based on freshness percentage."""
+    if freshness_pct >= 60:
         return "fresh"
-    else:
+    elif freshness_pct >= 30:
         return "warning"
+    else:
+        return "danger"
 
 
 def create_item_card(item: FridgeItem) -> html.Div:
     """Create a card component for a food item with editable name and shelf life."""
-    status_class = "no-expiry" if item.ignore_expiry else get_status_class(item.freshness_percentage, item.days_remaining)
-    
-    # Build shelf life section - show differently for items with ignored expiry
-    if item.ignore_expiry:
-        shelf_life_section = html.Div(
-            className="shelf-life-row no-expiry-indicator",
-            children=[
-                html.Span("♾️ No expiry tracking", className="no-expiry-text")
-            ]
-        )
-        days_left_section = html.Div([
-            html.Span("Days left: ", className="label"),
-            html.Span("∞", className="infinity-days")
-        ])
-    else:
-        shelf_life_section = html.Div(
-            className="shelf-life-row",
-            children=[
-                html.Span("Shelf life: ", className="label"),
-                html.Div(
-                    className="shelf-life-control",
-                    children=[
-                        html.Button(
-                            "−",
-                            className="shelf-btn shelf-btn-down",
-                            id={"type": "shelf-down-btn", "index": item.id},
-                            n_clicks=0
-                        ),
-                        html.Span(
-                            str(item.shelf_life_days),
-                            className="shelf-life-value",
-                            id={"type": "shelf-life-display", "index": item.id}
-                        ),
-                        html.Button(
-                            "+",
-                            className="shelf-btn shelf-btn-up",
-                            id={"type": "shelf-up-btn", "index": item.id},
-                            n_clicks=0
-                        ),
-                    ]
-                ),
-                html.Span(" days", className="days-label")
-            ]
-        )
-        days_left_section = html.Div([
-            html.Span("Days left: ", className="label"),
-            html.Span(f"{item.days_remaining} days")
-        ])
+    status_class = get_status_class(item.freshness_percentage)
     
     return html.Div(
         className=f"item-card {status_class}",
@@ -139,8 +87,39 @@ def create_item_card(item: FridgeItem) -> html.Div:
                         html.Span("Bought: ", className="label"),
                         html.Span(item.purchase_date.strftime("%b %d, %Y"))
                     ]),
-                    shelf_life_section,
-                    days_left_section
+                    html.Div(
+                        className="shelf-life-row",
+                        children=[
+                            html.Span("Shelf life: ", className="label"),
+                            html.Div(
+                                className="shelf-life-control",
+                                children=[
+                                    html.Button(
+                                        "−",
+                                        className="shelf-btn shelf-btn-down",
+                                        id={"type": "shelf-down-btn", "index": item.id},
+                                        n_clicks=0
+                                    ),
+                                    html.Span(
+                                        str(item.shelf_life_days),
+                                        className="shelf-life-value",
+                                        id={"type": "shelf-life-display", "index": item.id}
+                                    ),
+                                    html.Button(
+                                        "+",
+                                        className="shelf-btn shelf-btn-up",
+                                        id={"type": "shelf-up-btn", "index": item.id},
+                                        n_clicks=0
+                                    ),
+                                ]
+                            ),
+                            html.Span(" days", className="days-label")
+                        ]
+                    ),
+                    html.Div([
+                        html.Span("Days left: ", className="label"),
+                        html.Span(f"{item.days_remaining} days")
+                    ])
                 ]
             ),
             # Remaining amount slider
@@ -194,12 +173,9 @@ def create_item_card(item: FridgeItem) -> html.Div:
 def create_stats_cards(items: List[FridgeItem]) -> html.Div:
     """Create statistics cards showing item counts by status."""
     total = len(items)
-    # Items with ignore_expiry are counted as "fresh" and not in warning/danger
-    no_expiry = len([i for i in items if i.ignore_expiry])
-    tracked_items = [i for i in items if not i.ignore_expiry]
-    danger = len([i for i in tracked_items if i.days_remaining <= 0])
-    warning = len([i for i in tracked_items if i.days_remaining > 0 and i.freshness_percentage < 40])
-    fresh = len([i for i in tracked_items if i.days_remaining > 0 and i.freshness_percentage >= 40]) + no_expiry
+    fresh = len([i for i in items if i.freshness_percentage >= 60])
+    warning = len([i for i in items if 30 <= i.freshness_percentage < 60])
+    danger = len([i for i in items if i.freshness_percentage < 30])
     
     return html.Div(
         className="stats-container",
@@ -215,7 +191,7 @@ def create_stats_cards(items: List[FridgeItem]) -> html.Div:
                 className="stat-card fresh",
                 children=[
                     html.Div(str(fresh), className="stat-number"),
-                    html.Div(f"🟢 Fresh{f' (♾️{no_expiry})' if no_expiry else ''}", className="stat-label")
+                    html.Div("🟢 Fresh", className="stat-label")
                 ]
             ),
             html.Div(
@@ -254,8 +230,8 @@ def create_empty_state() -> html.Div:
 
 def create_compact_food_badge(item: FridgeItem) -> html.Div:
     """Create a compact badge for a food item that opens edit modal on click."""
-    status_class = "no-expiry" if item.ignore_expiry else get_status_class(item.freshness_percentage, item.days_remaining)
-    days_text = "♾️" if item.ignore_expiry else (f"{item.days_remaining}d" if item.days_remaining > 0 else "Exp")
+    status_class = get_status_class(item.freshness_percentage)
+    days_text = f"{item.days_remaining}d" if item.days_remaining >= 0 else "Exp"
     
     return html.Div(
         className=f"food-badge {status_class}",
@@ -536,6 +512,7 @@ app.layout = html.Div([
         className="main-tabs",
         children=[
             dcc.Tab(label="🍎 My Food", value="food-tab", className="main-tab"),
+            dcc.Tab(label="🍳 Kitchen Assistant", value="kitchen-assistant-tab", className="main-tab"),
         ]
     ),
     
@@ -545,8 +522,10 @@ app.layout = html.Div([
     # Hidden stores for triggering refreshes
     dcc.Store(id="refresh-trigger", data=0),
     dcc.Store(id="shopping-refresh-trigger", data=0),
+    dcc.Store(id="chat-history", data=[]),
     dcc.Store(id="edit-item-id", data=None),  # Store for tracking which item is being edited
     dcc.Store(id="pending-scanned-items", data=None),  # Store for pending items before confirmation
+    dcc.Store(id="selected-ingredients", data=[]),  # Store for selected ingredient IDs
     
     # Edit Item Modal
     html.Div(
@@ -646,6 +625,450 @@ def create_food_tab_content():
     ])
 
 
+def create_kitchen_assistant_content():
+    """Create the content for the Kitchen Assistant tab."""
+    # Get ALL fridge items, not just vegetables/meat
+    all_items = db.get_all_items()
+    
+    # Sort by freshness (expiring first)
+    items_sorted = sorted(all_items, key=lambda x: x.freshness_percentage)
+    
+    # Create ingredient checkboxes with expiring items highlighted
+    ingredient_options = []
+    for item in items_sorted:
+        # Highlight expiring items more prominently
+        if item.freshness_percentage < 30:
+            status_emoji = "🔴"
+        elif item.freshness_percentage < 60:
+            status_emoji = "🟡"
+        else:
+            status_emoji = "🟢"
+        
+        days_text = f"{item.days_remaining}d" if item.days_remaining >= 0 else "Exp"
+        ingredient_options.append({
+            "label": f"{status_emoji} {item.name} ({days_text})",
+            "value": item.id
+        })
+    
+    # Default: select items that are expiring or need to be used soon (< 60% freshness)
+    default_selected = [item.id for item in all_items if item.freshness_percentage < 60]
+    # If nothing is expiring, select all
+    if not default_selected:
+        default_selected = [item.id for item in all_items]
+    
+    # Count expiring items for display
+    expiring_count = len([i for i in all_items if i.freshness_percentage < 30])
+    use_soon_count = len([i for i in all_items if 30 <= i.freshness_percentage < 60])
+
+    return html.Div(
+        className="kitchen-assistant-container",
+        children=[
+            # Left Sidebar - Item Selection
+            html.Div(
+                className="items-sidebar",
+                children=[
+                    html.Div(
+                        className="sidebar-header",
+                        children=[
+                            html.H3("🧊 My Items"),
+                            html.Div(
+                                className="item-counts",
+                                children=[
+                                    html.Span(f"{len(all_items)} items", className="total-count"),
+                                    html.Span(f"🔴 {expiring_count}", className="expiring-count") if expiring_count > 0 else None,
+                                    html.Span(f"🟡 {use_soon_count}", className="use-soon-count") if use_soon_count > 0 else None,
+                                ]
+                            )
+                        ]
+                    ),
+                    # Select All / None / Expiring buttons
+                    html.Div(
+                        className="selection-controls",
+                        children=[
+                            html.Button("All", id="select-all-items", className="selection-btn", n_clicks=0),
+                            html.Button("None", id="select-none-items", className="selection-btn", n_clicks=0),
+                            html.Button("🔴 Expiring", id="select-expiring-items", className="selection-btn highlight", n_clicks=0),
+                        ]
+                    ),
+                    # Item checklist
+                    html.Div(
+                        className="items-checklist-container",
+                        children=[
+                            dcc.Checklist(
+                                id="kitchen-items-checklist",
+                                options=ingredient_options,
+                                value=default_selected,
+                                className="kitchen-items-checklist",
+                                labelClassName="kitchen-item-checkbox-label",
+                                inputClassName="kitchen-item-checkbox-input"
+                            ) if ingredient_options else html.Div(
+                                children=[
+                                    html.Div("🍎", className="empty-icon"),
+                                    html.P("No items in your kitchen yet!"),
+                                    html.P("Upload a receipt on the My Food tab to get started.", className="empty-hint")
+                                ],
+                                className="no-items-message"
+                            )
+                        ]
+                    ),
+                ]
+            ),
+            # Right Side - Chat Area
+            html.Div(
+                className="assistant-chat-area",
+                children=[
+                    # Quick Action Buttons
+                    html.Div(
+                        className="quick-actions-bar",
+                        children=[
+                            html.Button("🍳 Top 5 Recipes", id="quick-top5-btn", className="quick-action-btn primary", n_clicks=0, disabled=len(all_items) == 0),
+                            html.Button("⚠️ What's expiring?", id="quick-expiring-btn", className="quick-action-btn warning", n_clicks=0, disabled=len(all_items) == 0),
+                            html.Button("🥗 Meal prep ideas", id="quick-mealprep-btn", className="quick-action-btn", n_clicks=0, disabled=len(all_items) == 0),
+                            html.Button("🍲 Quick meal now", id="quick-now-btn", className="quick-action-btn", n_clicks=0, disabled=len(all_items) == 0),
+                        ]
+                    ),
+                    # Chat Messages
+                    html.Div(id="assistant-chat-messages", className="assistant-chat-messages"),
+                    # Dynamic prompt preview
+                    html.Div(id="dynamic-prompt-preview", className="dynamic-prompt-preview"),
+                    # Chat Input
+                    html.Div(
+                        className="assistant-input-area",
+                        children=[
+                            dcc.Checklist(
+                                id="use-recipes-doc-assistant",
+                                options=[{"label": " Include my Recipes Doc", "value": "yes"}],
+                                value=[],
+                                className="recipes-doc-checkbox"
+                            ),
+                            html.Div(
+                                className="chat-input-row",
+                                children=[
+                                    dcc.Input(
+                                        id="assistant-chat-input",
+                                        type="text",
+                                        placeholder="Ask about recipes, meal ideas, or how to use your ingredients...",
+                                        className="chat-input",
+                                        debounce=False,
+                                        n_submit=0
+                                    ),
+                                    html.Button("➤", id="assistant-send-btn", className="chat-send-btn", n_clicks=0)
+                                ]
+                            )
+                        ]
+                    )
+                ]
+            ),
+            # Streaming components
+            dcc.Interval(id="assistant-stream-interval", interval=100, disabled=True, n_intervals=0),
+            dcc.Store(id="assistant-streaming-state", data={"active": False, "pending_message": None, "use_doc": False}),
+        ]
+    )
+
+
+# Initialize chat engine (module-level for persistence)
+chat_engine = RecipeChatEngine()
+
+
+def get_all_items_by_ids(item_ids: List[int]) -> List[FridgeItem]:
+    """Get fridge items by their IDs (all categories)."""
+    all_items = db.get_all_items()
+    return [item for item in all_items if item.id in item_ids]
+
+
+@callback(
+    Output("kitchen-items-checklist", "value"),
+    [Input("select-all-items", "n_clicks"),
+     Input("select-none-items", "n_clicks"),
+     Input("select-expiring-items", "n_clicks")],
+    prevent_initial_call=True
+)
+def handle_item_selection_buttons(select_all, select_none, select_expiring):
+    """Handle Select All, Select None, and Select Expiring buttons."""
+    triggered = ctx.triggered_id
+    all_items = db.get_all_items()
+    
+    if triggered == "select-all-items":
+        return [item.id for item in all_items]
+    elif triggered == "select-none-items":
+        return []
+    elif triggered == "select-expiring-items":
+        return [item.id for item in all_items if item.freshness_percentage < 60]
+    return dash.no_update
+
+
+@callback(
+    Output("dynamic-prompt-preview", "children"),
+    Input("kitchen-items-checklist", "value"),
+    prevent_initial_call=False
+)
+def update_dynamic_prompt_preview(selected_ids):
+    """Update the dynamic prompt preview based on selected items."""
+    if not selected_ids:
+        return html.Div("Select items from the list to get recipe suggestions", className="prompt-preview-empty")
+    
+    selected_items = get_all_items_by_ids(selected_ids)
+    if not selected_items:
+        return html.Div("Select items from the list to get recipe suggestions", className="prompt-preview-empty")
+    
+    selected_items.sort(key=lambda x: x.freshness_percentage)
+    expiring = [i for i in selected_items if i.freshness_percentage < 30]
+    use_soon = [i for i in selected_items if 30 <= i.freshness_percentage < 60]
+    fresh = [i for i in selected_items if i.freshness_percentage >= 60]
+    
+    preview_parts = []
+    if expiring:
+        names = ", ".join([i.name for i in expiring[:4]]) + (f" +{len(expiring)-4}" if len(expiring) > 4 else "")
+        preview_parts.append(html.Span(f"🔴 Use first: {names}", className="preview-expiring"))
+    if use_soon:
+        names = ", ".join([i.name for i in use_soon[:3]]) + (f" +{len(use_soon)-3}" if len(use_soon) > 3 else "")
+        preview_parts.append(html.Span(f"🟡 Use soon: {names}", className="preview-soon"))
+    if fresh:
+        names = ", ".join([i.name for i in fresh[:3]]) + (f" +{len(fresh)-3}" if len(fresh) > 3 else "")
+        preview_parts.append(html.Span(f"🟢 Fresh: {names}", className="preview-fresh"))
+    
+    return html.Div([
+        html.Span(f"📋 {len(selected_ids)} items selected", className="preview-count"),
+        html.Div(preview_parts, className="preview-groups")
+    ], className="prompt-preview-content")
+
+
+@callback(
+    [Output("assistant-chat-messages", "children"),
+     Output("assistant-streaming-state", "data", allow_duplicate=True),
+     Output("assistant-stream-interval", "disabled", allow_duplicate=True)],
+    [Input("main-tabs", "value")],
+    [State("chat-history", "data")],
+    prevent_initial_call=True
+)
+def initialize_kitchen_assistant(tab, history):
+    """Initialize chat with welcome message when Kitchen Assistant tab is opened."""
+    if tab != "kitchen-assistant-tab":
+        return dash.no_update, dash.no_update, dash.no_update
+    
+    if not history:
+        all_items = db.get_all_items()
+        if not all_items:
+            welcome = ("👋 Welcome to your Kitchen Assistant!\n\n"
+                      "No items in your kitchen yet. Upload a grocery receipt on the **My Food** tab to start!")
+        else:
+            expiring = [i for i in all_items if i.freshness_percentage < 30]
+            use_soon = [i for i in all_items if 30 <= i.freshness_percentage < 60]
+            welcome = f"👋 Welcome! You have **{len(all_items)} items** in your kitchen."
+            if expiring:
+                welcome += f"\n\n⚠️ **{len(expiring)} items are expiring soon** and should be used first!"
+            if use_soon:
+                welcome += f"\n🟡 {len(use_soon)} items should be used in the next few days."
+            welcome += "\n\n**Quick start:**\n• Select items on the left\n• Click a quick action button\n• Or type your own question!"
+        
+        welcome_message = html.Div(className="chat-message bot", children=[
+            html.Span("🤖", className="message-avatar"),
+            html.Div(welcome, className="message-content")
+        ])
+        return [welcome_message], dash.no_update, dash.no_update
+    
+    return render_chat_messages(history), dash.no_update, dash.no_update
+
+
+def build_ingredients_context(selected_ids: List[int]) -> str:
+    """Build a context string describing selected ingredients."""
+    if not selected_ids:
+        return "No ingredients selected."
+    items = get_all_items_by_ids(selected_ids)
+    if not items:
+        return "No ingredients selected."
+    
+    items.sort(key=lambda x: x.freshness_percentage)
+    lines = []
+    for item in items:
+        note = ""
+        if item.freshness_percentage < 30:
+            note = " ⚠️ EXPIRING"
+        elif item.freshness_percentage < 60:
+            note = " (use soon)"
+        cat = f" [{item.category}]" if item.category else ""
+        lines.append(f"- {item.name}{cat}: {item.days_remaining} days left{note}")
+    return "\n".join(lines)
+
+
+@callback(
+    [Output("assistant-chat-messages", "children", allow_duplicate=True),
+     Output("assistant-streaming-state", "data", allow_duplicate=True),
+     Output("assistant-stream-interval", "disabled", allow_duplicate=True),
+     Output("chat-history", "data", allow_duplicate=True)],
+    [Input("quick-top5-btn", "n_clicks"),
+     Input("quick-expiring-btn", "n_clicks"),
+     Input("quick-mealprep-btn", "n_clicks"),
+     Input("quick-now-btn", "n_clicks")],
+    [State("kitchen-items-checklist", "value"),
+     State("use-recipes-doc-assistant", "value"),
+     State("chat-history", "data")],
+    prevent_initial_call=True
+)
+def handle_quick_actions(top5, expiring, mealprep, now, selected_items, use_recipes, history):
+    """Handle quick action button clicks."""
+    if not ctx.triggered_id:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    
+    if not selected_items:
+        msg = html.Div(className="chat-message bot", children=[
+            html.Span("🤖", className="message-avatar"),
+            html.Div("Please select some items from the list first!", className="message-content")
+        ])
+        messages = render_chat_messages(history or [])
+        messages.append(msg)
+        return messages, dash.no_update, dash.no_update, dash.no_update
+    
+    use_doc = "yes" in (use_recipes or [])
+    ctx_text = build_ingredients_context(selected_items)
+    triggered = ctx.triggered_id
+    
+    if triggered == "quick-top5-btn":
+        user_msg = "🍳 What are the top 5 things I can make?"
+        prompt = f"Based on these ingredients:\n\n{ctx_text}\n\nGive me TOP 5 dishes. For each: name, ingredients used, one tip. Prioritize expiring items (⚠️)."
+    elif triggered == "quick-expiring-btn":
+        user_msg = "⚠️ What should I use before it goes bad?"
+        prompt = f"I have:\n\n{ctx_text}\n\nFocus on EXPIRING items (⚠️). What should I make TODAY? Give 2-3 practical suggestions."
+    elif triggered == "quick-mealprep-btn":
+        user_msg = "🥗 Meal prep ideas for the week"
+        prompt = f"Based on:\n\n{ctx_text}\n\nSuggest 3 meal prep ideas. Include: what to make, ingredients, storage, portions."
+    elif triggered == "quick-now-btn":
+        user_msg = "🍲 What can I make right now?"
+        prompt = f"I have:\n\n{ctx_text}\n\nWhat's the easiest thing I can make RIGHT NOW (under 30 min)? Give 2-3 quick options."
+    else:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    
+    if not history:
+        history = []
+    
+    history_with_user = history + [{"role": "user", "content": user_msg}]
+    chat_engine.start_streaming_response(prompt, use_recipes_doc=use_doc)
+    
+    messages = render_chat_messages(history_with_user)
+    messages.append(render_typing_indicator())
+    
+    state = {"active": True, "pending_message": user_msg, "use_doc": use_doc}
+    return messages, state, False, dash.no_update
+
+
+def render_chat_messages(history):
+    """Render chat history as HTML components."""
+    messages = []
+    for msg in history:
+        if msg["role"] == "user":
+            messages.append(html.Div(className="chat-message user", children=[
+                html.Div(msg["content"], className="message-content"),
+                html.Span("👤", className="message-avatar")
+            ]))
+        else:
+            messages.append(html.Div(className="chat-message bot", children=[
+                html.Span("🤖", className="message-avatar"),
+                html.Div(msg["content"], className="message-content")
+            ]))
+    return messages
+
+
+def render_chat_messages_with_streaming(history, streaming_text=None):
+    """Render chat history as HTML components, optionally with a streaming message."""
+    messages = render_chat_messages(history)
+    
+    # Add streaming message if there's content
+    if streaming_text is not None:
+        messages.append(html.Div(className="chat-message bot", children=[
+            html.Span("🤖", className="message-avatar"),
+            html.Div(
+                children=[
+                    html.Span(streaming_text if streaming_text else ""),
+                    html.Span(className="typing-cursor")
+                ],
+                className="message-content message-streaming"
+            )
+        ]))
+    
+    return messages
+
+
+def render_typing_indicator():
+    """Render a typing indicator for the bot."""
+    return html.Div(className="chat-message bot", children=[
+        html.Span("🤖", className="message-avatar"),
+        html.Div(className="message-content typing-indicator", children=[
+            html.Span("●", className="dot dot-1"),
+            html.Span("●", className="dot dot-2"),
+            html.Span("●", className="dot dot-3"),
+        ])
+    ])
+
+
+@callback(
+    [Output("assistant-chat-messages", "children", allow_duplicate=True),
+     Output("assistant-chat-input", "value"),
+     Output("assistant-streaming-state", "data", allow_duplicate=True),
+     Output("assistant-stream-interval", "disabled", allow_duplicate=True)],
+    [Input("assistant-send-btn", "n_clicks"), Input("assistant-chat-input", "n_submit")],
+    [State("assistant-chat-input", "value"), State("chat-history", "data"), 
+     State("use-recipes-doc-assistant", "value"), State("kitchen-items-checklist", "value")],
+    prevent_initial_call=True
+)
+def send_assistant_message(n_clicks, n_submit, message, history, use_recipes, selected_items):
+    """Handle sending a chat message in the Kitchen Assistant."""
+    if not message or not message.strip():
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    
+    message = message.strip()
+    use_doc = "yes" in (use_recipes or [])
+    if not history:
+        history = []
+    
+    ctx_text = build_ingredients_context(selected_items or [])
+    if selected_items:
+        full_prompt = f"Selected ingredients:\n\n{ctx_text}\n\nUser question: {message}\n\nAnswer based on available ingredients."
+    else:
+        full_prompt = message
+    
+    history_with_user = history + [{"role": "user", "content": message}]
+    chat_engine.start_streaming_response(full_prompt, use_recipes_doc=use_doc)
+    
+    messages = render_chat_messages(history_with_user)
+    messages.append(render_typing_indicator())
+    
+    state = {"active": True, "pending_message": message, "use_doc": use_doc}
+    return messages, "", state, False
+
+
+@callback(
+    [Output("assistant-chat-messages", "children", allow_duplicate=True),
+     Output("chat-history", "data", allow_duplicate=True),
+     Output("assistant-streaming-state", "data", allow_duplicate=True),
+     Output("assistant-stream-interval", "disabled", allow_duplicate=True)],
+    Input("assistant-stream-interval", "n_intervals"),
+    [State("assistant-streaming-state", "data"), State("chat-history", "data")],
+    prevent_initial_call=True
+)
+def poll_assistant_streaming(n_intervals, streaming_state, history):
+    """Poll for streaming response updates."""
+    if not streaming_state or not streaming_state.get("active"):
+        return dash.no_update, dash.no_update, dash.no_update, True
+    
+    current_text, is_complete, error = chat_engine.get_streaming_state()
+    if not history:
+        history = []
+    
+    pending = streaming_state.get("pending_message")
+    base_history = history + [{"role": "user", "content": pending}]
+    
+    if error:
+        new_history = base_history + [{"role": "assistant", "content": error}]
+        return render_chat_messages(new_history), new_history, {"active": False}, True
+    
+    if is_complete:
+        final = current_text.strip() if current_text else "I couldn't generate a response."
+        new_history = base_history + [{"role": "assistant", "content": final}]
+        return render_chat_messages(new_history), new_history, {"active": False}, True
+    
+    return render_chat_messages_with_streaming(base_history, current_text), dash.no_update, dash.no_update, False
+
+
 @callback(
     Output("tab-content", "children"),
     Input("main-tabs", "value")
@@ -654,6 +1077,8 @@ def render_tab_content(tab):
     """Render the content for the selected tab."""
     if tab == "food-tab":
         return create_food_tab_content()
+    elif tab == "kitchen-assistant-tab":
+        return create_kitchen_assistant_content()
     return html.Div()
 
 
@@ -1128,46 +1553,26 @@ def delete_item(n_clicks, current_trigger):
 
 def create_edit_modal_body(item: FridgeItem) -> html.Div:
     """Create the body content for the edit modal."""
-    # Build per-location shelf life hints
-    loc_labels = {"fridge": "🧊 Fridge", "freezer": "❄️ Freezer", "pantry": "🗄️ Pantry", "counter": "🍎 Counter"}
-    loc_fields = {
-        "fridge":  item.shelf_life_fridge,
-        "freezer": item.shelf_life_freezer,
-        "pantry":  item.shelf_life_pantry,
-        "counter": item.shelf_life_counter,
-    }
-    has_per_loc = any(v is not None for v in loc_fields.values())
-    per_loc_hints = []
-    if has_per_loc:
-        for loc, label in loc_labels.items():
-            val = loc_fields[loc]
-            if val is not None:
-                is_current = (loc == item.storage_location)
-                per_loc_hints.append(
-                    html.Span(
-                        f"{label}: {val}d",
-                        className="shelf-life-loc-hint" + (" shelf-life-loc-current" if is_current else ""),
-                        title=f"Shelf life in {label}: {val} days"
-                    )
-                )
-
-    # Hidden store for per-location shelf life values (passed as JSON)
-    import json as _json
-    per_loc_json = _json.dumps({
-        "fridge":  item.shelf_life_fridge,
-        "freezer": item.shelf_life_freezer,
-        "pantry":  item.shelf_life_pantry,
-        "counter": item.shelf_life_counter,
-    })
-
     return html.Div([
-        # Hidden store for per-location shelf life
-        dcc.Store(id="edit-item-per-loc-shelf-life", data=per_loc_json),
-
         html.Div(className="edit-form-group", children=[
             html.Label("Name", className="edit-form-label"),
             dcc.Input(id="edit-item-name", type="text", value=item.name,
                       className="edit-form-input", placeholder="Item name")
+        ]),
+        html.Div(className="edit-form-group", children=[
+            html.Label("Shelf Life (days)", className="edit-form-label"),
+            html.Div(className="edit-shelf-life-control", children=[
+                html.Button("−", id="edit-shelf-down", className="edit-shelf-btn", n_clicks=0),
+                dcc.Input(id="edit-item-shelf-life", type="number", value=item.shelf_life_days,
+                          className="edit-shelf-input", min=1, max=365),
+                html.Button("+", id="edit-shelf-up", className="edit-shelf-btn", n_clicks=0)
+            ])
+        ]),
+        html.Div(className="edit-form-group", children=[
+            html.Label("Remaining", className="edit-form-label"),
+            html.Div(f"{item.remaining_percentage}%", className="edit-remaining-display", id="edit-remaining-display"),
+            dcc.Slider(id="edit-item-remaining", min=0, max=100, step=10, value=item.remaining_percentage,
+                       marks={0: '0%', 50: '50%', 100: '100%'}, className="edit-remaining-slider")
         ]),
         html.Div(className="edit-form-group", children=[
             html.Label("Storage Location", className="edit-form-label"),
@@ -1176,45 +1581,11 @@ def create_edit_modal_body(item: FridgeItem) -> html.Div:
                 {"label": "🗄️ Pantry", "value": "pantry"}, {"label": "🍎 Counter", "value": "counter"}
             ], value=item.storage_location, className="edit-storage-dropdown", clearable=False)
         ]),
-        html.Div(className="edit-form-group", children=[
-            html.Label("Shelf Life (days)", className="edit-form-label"),
-            html.Div(className="edit-shelf-life-control", children=[
-                html.Button("−", id="edit-shelf-down", className="edit-shelf-btn", n_clicks=0),
-                dcc.Input(id="edit-item-shelf-life", type="number", value=item.shelf_life_days,
-                          className="edit-shelf-input", min=1, max=3650, disabled=item.ignore_expiry),
-                html.Button("+", id="edit-shelf-up", className="edit-shelf-btn", n_clicks=0)
-            ]),
-            # Per-location shelf life hints
-            html.Div(
-                className="shelf-life-loc-hints",
-                children=per_loc_hints if per_loc_hints else [
-                    html.Span("No per-location data yet", className="shelf-life-loc-hint-empty")
-                ]
-            )
-        ]),
-        html.Div(className="edit-form-group ignore-expiry-group", children=[
-            dcc.Checklist(
-                id="edit-item-ignore-expiry",
-                options=[{"label": " Don't track expiry date", "value": "ignore"}],
-                value=["ignore"] if item.ignore_expiry else [],
-                className="ignore-expiry-checkbox"
-            ),
-            html.Div("♾️ This item won't show expiry warnings", 
-                     className="ignore-expiry-hint",
-                     style={"display": "block" if item.ignore_expiry else "none"},
-                     id="ignore-expiry-hint")
-        ]),
-        html.Div(className="edit-form-group", children=[
-            html.Label("Remaining", className="edit-form-label"),
-            html.Div(f"{item.remaining_percentage}%", className="edit-remaining-display", id="edit-remaining-display"),
-            dcc.Slider(id="edit-item-remaining", min=0, max=100, step=10, value=item.remaining_percentage,
-                       marks={0: '0%', 50: '50%', 100: '100%'}, className="edit-remaining-slider")
-        ]),
         html.Div(className="edit-item-info", children=[
             html.Div([html.Span(item.status_emoji, style={"marginRight": "8px"}),
-                      html.Span(item.status_text, className=f"status-badge {get_status_class(item.freshness_percentage, item.days_remaining)}")]),
+                      html.Span(item.status_text, className=f"status-badge {get_status_class(item.freshness_percentage)}")]),
             html.Div(f"Purchased: {item.purchase_date.strftime('%b %d, %Y')}", className="edit-info-text"),
-            html.Div(f"Days remaining: {'∞' if item.ignore_expiry else item.days_remaining}", className="edit-info-text"),
+            html.Div(f"Days remaining: {item.days_remaining}", className="edit-info-text"),
             html.Div(f"Category: {item.category or 'Other'}", className="edit-info-text")
         ])
     ])
@@ -1269,36 +1640,18 @@ def update_remaining_display(value):
 @callback(
     Output("edit-item-shelf-life", "value"),
     [Input("edit-shelf-up", "n_clicks"),
-     Input("edit-shelf-down", "n_clicks"),
-     Input("edit-item-storage", "value")],
-    [State("edit-item-shelf-life", "value"),
-     State("edit-item-per-loc-shelf-life", "data")],
+     Input("edit-shelf-down", "n_clicks")],
+    State("edit-item-shelf-life", "value"),
     prevent_initial_call=True
 )
-def update_shelf_life_in_modal(up_clicks, down_clicks, storage_value, current_value, per_loc_data):
-    """Update shelf life value when +/- buttons are clicked or storage location changes."""
-    if not ctx.triggered_id:
+def update_shelf_life_in_modal(up_clicks, down_clicks, current_value):
+    """Update shelf life value when +/- buttons are clicked."""
+    if not ctx.triggered_id or current_value is None:
         return dash.no_update
-
-    triggered = ctx.triggered_id
-
-    # When storage location changes, auto-fill shelf life from per-location data
-    if triggered == "edit-item-storage" and storage_value and per_loc_data:
-        try:
-            per_loc = json.loads(per_loc_data) if isinstance(per_loc_data, str) else per_loc_data
-            new_val = per_loc.get(storage_value)
-            if new_val is not None:
-                return int(new_val)
-        except Exception:
-            pass
-        return dash.no_update
-
-    if current_value is None:
-        return dash.no_update
-
-    if triggered == "edit-shelf-up":
-        return min(3650, current_value + 1)
-    elif triggered == "edit-shelf-down":
+    
+    if ctx.triggered_id == "edit-shelf-up":
+        return min(365, current_value + 1)
+    elif ctx.triggered_id == "edit-shelf-down":
         return max(1, current_value - 1)
     return dash.no_update
 
@@ -1312,42 +1665,21 @@ def update_shelf_life_in_modal(up_clicks, down_clicks, storage_value, current_va
      State("edit-item-shelf-life", "value"),
      State("edit-item-remaining", "value"),
      State("edit-item-storage", "value"),
-     State("edit-item-ignore-expiry", "value"),
-     State("edit-item-per-loc-shelf-life", "data"),
      State("refresh-trigger", "data")],
     prevent_initial_call=True
 )
-def save_edit_modal(n_clicks, item_id, name, shelf_life, remaining, storage, ignore_expiry, per_loc_data, current_trigger):
+def save_edit_modal(n_clicks, item_id, name, shelf_life, remaining, storage, current_trigger):
     """Save the edited item and close the modal."""
     if not n_clicks or not item_id:
         return dash.no_update, dash.no_update
     
-    # Convert ignore_expiry checklist value to boolean
-    ignore_expiry_bool = bool(ignore_expiry and "ignore" in ignore_expiry)
-
-    # Build per-location shelf life update: update the current location's value
-    # with whatever the user set in the shelf life input
-    per_loc_kwargs = {}
-    if storage and shelf_life is not None:
-        loc_col_map = {
-            "fridge":  "shelf_life_fridge",
-            "freezer": "shelf_life_freezer",
-            "pantry":  "shelf_life_pantry",
-            "counter": "shelf_life_counter",
-        }
-        col = loc_col_map.get(storage)
-        if col:
-            per_loc_kwargs[col] = shelf_life
-
     # Update the item in the database
     db.update_item(
         item_id,
         name=name.strip() if name else None,
         shelf_life_days=shelf_life,
         remaining_percentage=remaining,
-        storage_location=storage,
-        ignore_expiry=ignore_expiry_bool,
-        **per_loc_kwargs
+        storage_location=storage
     )
     
     return {"display": "none"}, current_trigger + 1
