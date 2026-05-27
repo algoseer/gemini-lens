@@ -646,6 +646,10 @@ def create_food_tab_content():
     ])
 
 
+@callback(
+    Output("tab-content", "children"),
+    Input("main-tabs", "value")
+)
 def render_tab_content(tab):
     """Render the content for the selected tab."""
     if tab == "food-tab":
