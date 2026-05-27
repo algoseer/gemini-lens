@@ -24,13 +24,15 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
     title="🍎 Food Freshness Tracker",
     update_title=None,  # Prevents "Updating..." flicker in the browser tab title
-    # Increase server-side callback timeout to 120 seconds (default is 30s)
-    # This prevents "server did not respond" errors during long Gemini API calls
-    server_timeout=120,
 )
 
 # Make server accessible for running
 server = app.server
+
+# Increase Flask/Werkzeug request timeout to 120 seconds so long-running
+# Gemini API calls (receipt parsing + shelf life) don't trigger
+# "server did not respond" errors in the browser.
+server.config["TIMEOUT"] = 120
 
 
 def get_status_class(freshness_pct: float, days_remaining: int = None) -> str:
