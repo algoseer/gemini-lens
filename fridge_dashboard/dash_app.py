@@ -600,7 +600,6 @@ app.layout = html.Div([
                             value="",
                             placeholder="Start typing your notes here…",
                             className="notes-textarea",
-                            debounce=True,
                         ),
                         html.Div(
                             className="notes-actions",
@@ -780,11 +779,12 @@ def load_notes_content(tab):
 @callback(
     Output("notes-save-status", "children"),
     [Input("notes-save-btn", "n_clicks"),
-     Input("notes-textarea", "value")],
+     Input("notes-textarea", "n_blur")],
+    State("notes-textarea", "value"),
     prevent_initial_call=True
 )
-def save_notes(n_clicks, textarea_value):
-    """Save notes when Save button is clicked or textarea is debounced."""
+def save_notes(n_clicks, n_blur, textarea_value):
+    """Save notes when Save button is clicked or textarea loses focus."""
     if textarea_value is None:
         return dash.no_update
     db.save_note(textarea_value)
