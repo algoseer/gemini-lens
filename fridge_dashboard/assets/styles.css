@@ -1862,17 +1862,52 @@ details[open] .ingredients-header::before {
 .edit-form-input {
     width: 100%;
     padding: 12px 16px;
+    height: 48px;
+    line-height: 1.4;
     border: 2px solid #e0e0e0;
     border-radius: 10px;
     font-size: 1rem;
     transition: all 0.2s ease;
     box-sizing: border-box;
+    display: block;
 }
 
 .edit-form-input:focus {
     outline: none;
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+/* Dash wraps dcc.Input in a div — target the actual input element */
+.edit-form-group input[type="text"],
+.edit-form-group input[type="number"] {
+    width: 100%;
+    padding: 12px 16px;
+    height: 48px;
+    line-height: 1.4;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    display: block;
+    font-family: inherit;
+}
+
+.edit-form-group input[type="text"]:focus,
+.edit-form-group input[type="number"]:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.edit-shelf-life-control input[type="number"] {
+    width: 80px !important;
+    height: 44px;
+    text-align: center;
+    padding: 10px;
+    font-size: 1.1rem;
+    font-weight: 600;
 }
 
 .edit-shelf-life-control {
@@ -1901,12 +1936,15 @@ details[open] .ingredients-header::before {
 
 .edit-shelf-input {
     width: 80px;
+    height: 44px;
     text-align: center;
     padding: 10px;
     border: 2px solid #e0e0e0;
     border-radius: 10px;
     font-size: 1.1rem;
     font-weight: 600;
+    box-sizing: border-box;
+    line-height: 1.4;
 }
 
 .edit-shelf-input:focus {
