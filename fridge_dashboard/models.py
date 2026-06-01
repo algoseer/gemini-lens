@@ -216,3 +216,12 @@ class ShoppingListItem:
     def storage_display(self) -> str:
         """Get display name for storage location."""
         return STORAGE_DISPLAY_NAMES.get(self.storage_location, "🧊 Fridge")
+
+
+@dataclass
+class Note:
+    """Represents a freeform notes document."""
+    
+    id: Optional[int]
+    content: str
+    updated_at: datetime

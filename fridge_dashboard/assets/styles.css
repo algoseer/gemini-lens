@@ -2579,3 +2579,107 @@ details[open] .ingredients-header::before {
     background: #6c757d;
     color: white;
 }
+
+/* ============================================================
+   Notes Tab
+   ============================================================ */
+
+.notes-container {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    max-width: 800px;
+    margin: 0 auto 30px auto;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+}
+
+.notes-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.notes-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 1.4rem;
+}
+
+.notes-save-status {
+    font-size: 0.85rem;
+    color: #28a745;
+    font-weight: 600;
+    transition: opacity 0.3s ease;
+}
+
+.notes-subtitle {
+    color: #888;
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+}
+
+.notes-textarea {
+    width: 100%;
+    min-height: 380px;
+    padding: 14px 16px;
+    border: 1.5px solid #dde1f0;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 0.97rem;
+    line-height: 1.6;
+    color: #333;
+    resize: vertical;
+    box-sizing: border-box;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    outline: none;
+}
+
+.notes-textarea:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102,126,234,0.15);
+}
+
+.notes-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.notes-save-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 22px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.notes-save-btn:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+.notes-save-btn:active {
+    transform: translateY(0);
+}
+
+.notes-clear-btn {
+    background: #f8f9fa;
+    color: #666;
+    border: 1.5px solid #dde1f0;
+    border-radius: 8px;
+    padding: 9px 18px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.notes-clear-btn:hover {
+    background: #fee2e2;
+    color: #dc3545;
+    border-color: #dc3545;
+}

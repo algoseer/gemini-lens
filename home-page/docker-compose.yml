@@ -1,0 +1,9 @@
+services:
+  home-page:
+    image: nginx:alpine
+    container_name: home-page
+    ports:
+      - "80:80"
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+    restart: unless-stopped

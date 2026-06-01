@@ -5,7 +5,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import List, Optional
 
-from .models import FridgeItem, PurchaseHistoryItem, ShoppingListItem
+from .models import FridgeItem, PurchaseHistoryItem, ShoppingListItem, Note
 
 # Database file path - use /app/data directory for Docker volume mount
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -104,7 +104,21 @@ def init_database():
             suppressed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
+
+    # Notes table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content TEXT NOT NULL DEFAULT '',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Seed a single notes row if none exists
+    cursor.execute("SELECT COUNT(*) FROM notes")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO notes (content) VALUES ('')")
+
     conn.commit()
     conn.close()
 
@@ -674,6 +688,38 @@ def get_suppressed_suggestions() -> List[str]:
     conn.close()
     
     return names
+
+
+# ============================================================================
+# Notes Functions
+# ============================================================================
+
+def get_note() -> str:
+    """Get the current notes content (single shared note)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT content FROM notes ORDER BY id LIMIT 1")
+    row = cursor.fetchone()
+    conn.close()
+    return row["content"] if row else ""
+
+
+def save_note(content: str) -> bool:
+    """Save/update the notes content."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM notes ORDER BY id LIMIT 1")
+    row = cursor.fetchone()
+    if row:
+        cursor.execute(
+            "UPDATE notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (content, row["id"])
+        )
+    else:
+        cursor.execute("INSERT INTO notes (content) VALUES (?)", (content,))
+    conn.commit()
+    conn.close()
+    return True
 
 
 # Initialize database on module import

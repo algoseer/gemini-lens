@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Home Server</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: #f8fafc;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      color: #64748b;
+      font-size: 0.95rem;
+      margin-bottom: 3rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.25rem;
+      width: 100%;
+      max-width: 900px;
+    }
+
+    .card {
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-radius: 14px;
+      padding: 1.5rem 1.75rem;
+      text-decoration: none;
+      color: inherit;
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: #4f5a8a;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    .card-icon {
+      font-size: 2rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .card-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+
+    .card-desc {
+      font-size: 0.82rem;
+      color: #64748b;
+    }
+
+    .card-port {
+      font-size: 0.75rem;
+      color: #475569;
+      margin-top: auto;
+      padding-top: 0.75rem;
+      border-top: 1px solid #2d3148;
+      font-family: monospace;
+    }
+
+    footer {
+      margin-top: 3rem;
+      color: #334155;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>🏠 Home Server</h1>
+  <p class="subtitle">diagonalleyk — all services</p>
+
+  <div class="grid">
+
+    <a class="card" href="http://192.168.12.153:8096" target="_blank">
+      <div class="card-icon">🎬</div>
+      <div class="card-name">Jellyfin</div>
+      <div class="card-desc">Media server — movies, music &amp; photos</div>
+      <div class="card-port">:8096</div>
+    </a>
+
+    <a class="card" href="http://192.168.12.153:8384" target="_blank">
+      <div class="card-icon">🔄</div>
+      <div class="card-name">Syncthing</div>
+      <div class="card-desc">Continuous file synchronisation</div>
+      <div class="card-port">:8384</div>
+    </a>
+
+    <a class="card" href="http://192.168.12.153:3000" target="_blank">
+      <div class="card-icon">🧩</div>
+      <div class="card-name">Jigsaw Puzzle</div>
+      <div class="card-desc">Jigsaw puzzle app</div>
+      <div class="card-port">:3000</div>
+    </a>
+
+    <a class="card" href="http://192.168.12.153:8050" target="_blank">
+      <div class="card-icon">🧊</div>
+      <div class="card-name">Fridge Dashboard</div>
+      <div class="card-desc">Gemini-powered fridge &amp; recipe tracker</div>
+      <div class="card-port">:8050</div>
+    </a>
+
+    <a class="card" href="http://192.168.12.153:5000" target="_blank">
+      <div class="card-icon">🏊</div>
+      <div class="card-name">Swim Scheduler</div>
+      <div class="card-desc">Swimming schedule &amp; training planner</div>
+      <div class="card-port">:5000</div>
+    </a>
+
+  </div>
+
+  <footer>Last updated June 2026</footer>
+</body>
+</html>
