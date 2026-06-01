@@ -515,8 +515,105 @@ app.layout = html.Div([
         ]
     ),
     
-    # Tab Content Container
-    html.Div(id="tab-content"),
+    # Tab Content Container - both tabs always in DOM, shown/hidden via style
+    html.Div(id="tab-content", children=[
+        # Food tab - always in DOM
+        html.Div(
+            id="food-tab-panel",
+            children=[
+                html.Div(
+                    className="upload-section",
+                    children=[
+                        html.H3("📷 Upload Receipt"),
+                        html.P(
+                            "Upload a photo of your grocery receipt to add food items.",
+                            style={"color": "#666", "marginBottom": "15px"}
+                        ),
+                        dcc.Upload(
+                            id="upload-receipt",
+                            children=html.Div([
+                                "Drag and drop or ",
+                                html.A("click to select", style={"color": "#667eea", "fontWeight": "600"}),
+                                " a receipt image"
+                            ]),
+                            className="dash-upload",
+                            style={
+                                "width": "100%", "height": "100px", "lineHeight": "60px",
+                                "borderWidth": "2px", "borderStyle": "dashed", "borderRadius": "10px",
+                                "textAlign": "center", "cursor": "pointer"
+                            },
+                            multiple=False,
+                            accept="image/*"
+                        ),
+                        html.Div(
+                            style={"marginTop": "15px", "display": "flex", "alignItems": "center", "gap": "10px"},
+                            children=[
+                                html.Label("Purchase Date:", style={"fontWeight": "500"}),
+                                dcc.DatePickerSingle(
+                                    id="purchase-date-picker",
+                                    date=date.today(),
+                                    display_format="MMM D, YYYY",
+                                    style={"marginLeft": "10px"}
+                                )
+                            ]
+                        ),
+                        dcc.Loading(
+                            id="upload-loading",
+                            type="default",
+                            color="#667eea",
+                            children=[html.Div(id="upload-status", style={"marginTop": "15px"})],
+                            fullscreen=False,
+                            style={"marginTop": "20px"},
+                            custom_spinner=html.Div([
+                                html.Div(className="upload-spinner"),
+                                html.Div("🔍 Analyzing receipt with Gemini AI...", className="upload-spinner-text")
+                            ])
+                        )
+                    ]
+                ),
+                html.Div(id="alert-container"),
+                html.Div(id="stats-container"),
+                html.Div(id="items-container"),
+            ]
+        ),
+        # Notes tab - always in DOM, hidden by default
+        html.Div(
+            id="notes-tab-panel",
+            style={"display": "none"},
+            children=[
+                html.Div(
+                    className="notes-container",
+                    children=[
+                        html.Div(
+                            className="notes-header",
+                            children=[
+                                html.H3("📝 Notes"),
+                                html.Span(id="notes-save-status", className="notes-save-status"),
+                            ]
+                        ),
+                        html.P(
+                            "Jot down anything — meal ideas, grocery reminders, kitchen tips…",
+                            className="notes-subtitle"
+                        ),
+                        dcc.Textarea(
+                            id="notes-textarea",
+                            value="",
+                            placeholder="Start typing your notes here…",
+                            className="notes-textarea",
+                            debounce=True,
+                        ),
+                        html.Div(
+                            className="notes-actions",
+                            children=[
+                                html.Button("💾 Save", id="notes-save-btn", className="notes-save-btn", n_clicks=0),
+                                html.Button("🗑️ Clear", id="notes-clear-btn", className="notes-clear-btn", n_clicks=0),
+                            ]
+                        ),
+                    ]
+                ),
+            ]
+        ),
+    ]),
     
     # Hidden stores for triggering refreshes
     dcc.Store(id="refresh-trigger", data=0),
@@ -658,16 +755,26 @@ def create_notes_tab_content():
 
 
 @callback(
-    Output("tab-content", "children"),
+    [Output("food-tab-panel", "style"),
+     Output("notes-tab-panel", "style")],
     Input("main-tabs", "value")
 )
 def render_tab_content(tab):
-    """Render the content for the selected tab."""
-    if tab == "food-tab":
-        return create_food_tab_content()
-    elif tab == "notes-tab":
-        return create_notes_tab_content()
-    return html.Div()
+    """Show/hide tab panels based on selected tab."""
+    if tab == "notes-tab":
+        return {"display": "none"}, {"display": "block"}
+    # Default: show food tab
+    return {"display": "block"}, {"display": "none"}
+
+
+@callback(
+    Output("notes-textarea", "value"),
+    Input("main-tabs", "value"),
+    prevent_initial_call=False
+)
+def load_notes_content(tab):
+    """Load notes content when switching to notes tab (or on initial load)."""
+    return db.get_note()
 
 
 @callback(
@@ -685,7 +792,7 @@ def save_notes(n_clicks, textarea_value):
 
 
 @callback(
-    [Output("notes-textarea", "value"),
+    [Output("notes-textarea", "value", allow_duplicate=True),
      Output("notes-save-status", "children", allow_duplicate=True)],
     Input("notes-clear-btn", "n_clicks"),
     prevent_initial_call=True
@@ -702,14 +809,11 @@ def clear_notes(n_clicks):
     [Output("stats-container", "children"),
      Output("items-container", "children")],
     [Input("refresh-trigger", "data"),
-     Input("auto-refresh", "n_intervals"),
-     Input("main-tabs", "value")],
+     Input("auto-refresh", "n_intervals")],
     prevent_initial_call=False
 )
-def refresh_dashboard(trigger, intervals, active_tab):
+def refresh_dashboard(trigger, intervals):
     """Refresh the dashboard with current items."""
-    if active_tab != "food-tab":
-        return dash.no_update, dash.no_update
     items = db.get_all_items()
     return create_stats_cards(items), create_items_grid(items)
 
@@ -1405,155 +1509,6 @@ def update_remaining_slider(slider_values, current_trigger):
     return dash.no_update
 
 
-# ============================================================================
-# Shopping List Callbacks
-# ============================================================================
-
-@callback(
-    [Output("suggestions-container", "children"),
-     Output("shopping-list-container", "children"),
-     Output("suppressed-container", "children")],
-    [Input("shopping-refresh-trigger", "data"),
-     Input("main-tabs", "value")],
-    prevent_initial_call=True
-)
-def refresh_shopping_tab(trigger, tab):
-    """Refresh the shopping tab content."""
-    if tab != "shopping-tab":
-        return dash.no_update, dash.no_update, dash.no_update
-    
-    suggestions = db.get_suggested_items(min_purchase_count=1, limit=20)
-    shopping_list = db.get_shopping_list()
-    suppressed = db.get_suppressed_suggestions()
-    
-    return (
-        create_suggestions_panel(suggestions),
-        create_shopping_list_panel(shopping_list),
-        create_suppressed_panel(suppressed)
-    )
-
-
-@callback(
-    Output("shopping-refresh-trigger", "data", allow_duplicate=True),
-    Input({"type": "add-suggestion-btn", "name": ALL, "category": ALL, "storage": ALL}, "n_clicks"),
-    State("shopping-refresh-trigger", "data"),
-    prevent_initial_call=True
-)
-def add_suggestion_to_list(n_clicks, current_trigger):
-    """Add a suggested item to the shopping list."""
-    if not ctx.triggered_id or not any(n_clicks):
-        return dash.no_update
-    
-    name = ctx.triggered_id["name"]
-    category = ctx.triggered_id["category"] or None
-    storage = ctx.triggered_id["storage"]
-    
-    db.add_to_shopping_list(name, category, storage, source="suggested")
-    return current_trigger + 1
-
-
-@callback(
-    Output("shopping-refresh-trigger", "data", allow_duplicate=True),
-    Input({"type": "suppress-suggestion-btn", "name": ALL}, "n_clicks"),
-    State("shopping-refresh-trigger", "data"),
-    prevent_initial_call=True
-)
-def suppress_suggestion_callback(n_clicks, current_trigger):
-    """Suppress a suggestion from appearing."""
-    if not ctx.triggered_id or not any(n_clicks):
-        return dash.no_update
-    
-    name = ctx.triggered_id["name"]
-    db.suppress_suggestion(name)
-    return current_trigger + 1
-
-
-@callback(
-    Output("shopping-refresh-trigger", "data", allow_duplicate=True),
-    Input({"type": "unsuppress-btn", "name": ALL}, "n_clicks"),
-    State("shopping-refresh-trigger", "data"),
-    prevent_initial_call=True
-)
-def unsuppress_suggestion_callback(n_clicks, current_trigger):
-    """Restore a suppressed suggestion."""
-    if not ctx.triggered_id or not any(n_clicks):
-        return dash.no_update
-    
-    name = ctx.triggered_id["name"]
-    db.unsuppress_suggestion(name)
-    return current_trigger + 1
-
-
-@callback(
-    Output("shopping-refresh-trigger", "data", allow_duplicate=True),
-    Input({"type": "toggle-shopping-item", "index": ALL}, "n_clicks"),
-    State("shopping-refresh-trigger", "data"),
-    prevent_initial_call=True
-)
-def toggle_shopping_item(n_clicks, current_trigger):
-    """Toggle a shopping list item's checked status."""
-    if not ctx.triggered_id or not any(n_clicks):
-        return dash.no_update
-    
-    item_id = ctx.triggered_id["index"]
-    db.toggle_shopping_list_item(item_id)
-    return current_trigger + 1
-
-
-@callback(
-    Output("shopping-refresh-trigger", "data", allow_duplicate=True),
-    Input({"type": "remove-shopping-item", "index": ALL}, "n_clicks"),
-    State("shopping-refresh-trigger", "data"),
-    prevent_initial_call=True
-)
-def remove_shopping_item(n_clicks, current_trigger):
-    """Remove an item from the shopping list."""
-    if not ctx.triggered_id or not any(n_clicks):
-        return dash.no_update
-    
-    item_id = ctx.triggered_id["index"]
-    db.remove_from_shopping_list(item_id)
-    return current_trigger + 1
-
-
-@callback(
-    Output("shopping-refresh-trigger", "data", allow_duplicate=True),
-    [Input("clear-checked-btn", "n_clicks"),
-     Input("clear-all-btn", "n_clicks")],
-    State("shopping-refresh-trigger", "data"),
-    prevent_initial_call=True
-)
-def clear_shopping_list_callback(clear_checked, clear_all, current_trigger):
-    """Clear the shopping list (checked only or all)."""
-    if not ctx.triggered_id:
-        return dash.no_update
-    
-    if ctx.triggered_id == "clear-checked-btn" and clear_checked:
-        db.clear_shopping_list(checked_only=True)
-    elif ctx.triggered_id == "clear-all-btn" and clear_all:
-        db.clear_shopping_list(checked_only=False)
-    else:
-        return dash.no_update
-    
-    return current_trigger + 1
-
-
-@callback(
-    [Output("shopping-refresh-trigger", "data", allow_duplicate=True),
-     Output("new-item-name", "value")],
-    Input("add-manual-item-btn", "n_clicks"),
-    [State("new-item-name", "value"),
-     State("new-item-storage", "value"),
-     State("shopping-refresh-trigger", "data")],
-    prevent_initial_call=True
-)
-def add_manual_item(n_clicks, name, storage, current_trigger):
-    """Add a manually entered item to the shopping list."""
-    if not n_clicks or not name or not name.strip():
-        return dash.no_update, dash.no_update
-    
-    db.add_to_shopping_list(name.strip(), None, storage, source="manual")
-    return current_trigger + 1, ""
 
 
 def run_server(debug: bool = False, port: int = 8050, host: str = "0.0.0.0"):
