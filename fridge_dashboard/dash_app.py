@@ -702,10 +702,14 @@ def clear_notes(n_clicks):
     [Output("stats-container", "children"),
      Output("items-container", "children")],
     [Input("refresh-trigger", "data"),
-     Input("auto-refresh", "n_intervals")]
+     Input("auto-refresh", "n_intervals"),
+     Input("main-tabs", "value")],
+    prevent_initial_call=False
 )
-def refresh_dashboard(trigger, intervals):
+def refresh_dashboard(trigger, intervals, active_tab):
     """Refresh the dashboard with current items."""
+    if active_tab != "food-tab":
+        return dash.no_update, dash.no_update
     items = db.get_all_items()
     return create_stats_cards(items), create_items_grid(items)
 
