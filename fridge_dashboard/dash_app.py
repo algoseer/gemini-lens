@@ -592,14 +592,39 @@ app.layout = html.Div([
                             ]
                         ),
                         html.P(
-                            "Jot down anything — meal ideas, grocery reminders, kitchen tips…",
+                            "Jot down anything — supports **Markdown** formatting",
                             className="notes-subtitle"
                         ),
-                        dcc.Textarea(
-                            id="notes-textarea",
-                            value="",
-                            placeholder="Start typing your notes here…",
-                            className="notes-textarea",
+                        # Split pane: editor + preview
+                        html.Div(
+                            className="notes-split-pane",
+                            children=[
+                                # Left: editor
+                                html.Div(
+                                    className="notes-editor-pane",
+                                    children=[
+                                        html.Div("✏️ Edit", className="notes-pane-label"),
+                                        dcc.Textarea(
+                                            id="notes-textarea",
+                                            value="",
+                                            placeholder="# My Notes\n\nStart typing **markdown** here…\n\n- Item 1\n- Item 2",
+                                            className="notes-textarea",
+                                        ),
+                                    ]
+                                ),
+                                # Right: preview
+                                html.Div(
+                                    className="notes-preview-pane",
+                                    children=[
+                                        html.Div("👁️ Preview", className="notes-pane-label"),
+                                        html.Div(
+                                            id="notes-preview",
+                                            className="notes-preview-content",
+                                            children=[dcc.Markdown("", id="notes-markdown")]
+                                        ),
+                                    ]
+                                ),
+                            ]
                         ),
                         html.Div(
                             className="notes-actions",
@@ -774,6 +799,18 @@ def render_tab_content(tab):
 def load_notes_content(tab):
     """Load notes content when switching to notes tab (or on initial load)."""
     return db.get_note()
+
+
+@callback(
+    Output("notes-markdown", "children"),
+    Input("notes-textarea", "value"),
+    prevent_initial_call=False
+)
+def update_notes_preview(value):
+    """Live-update the markdown preview as the user types."""
+    if not value:
+        return "*Start typing in the editor to see a preview…*"
+    return value
 
 
 @callback(
