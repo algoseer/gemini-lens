@@ -1342,6 +1342,14 @@ def create_edit_modal_body(item: FridgeItem) -> html.Div:
                 {"label": "🗄️ Pantry", "value": "pantry"}, {"label": "🍎 Counter", "value": "counter"}
             ], value=item.storage_location, className="edit-storage-dropdown", clearable=False)
         ]),
+        html.Div(className="edit-form-group", children=[
+            dcc.Checklist(
+                id="edit-item-ignore-expiry",
+                options=[{"label": " ♾️ Don't track expiry dates for this item", "value": "ignore"}],
+                value=["ignore"] if item.ignore_expiry else [],
+                className="edit-ignore-expiry-checkbox"
+            )
+        ]),
         html.Div(className="edit-item-info", children=[
             html.Div([html.Span(item.status_emoji, style={"marginRight": "8px"}),
                       html.Span(item.status_text, className=f"status-badge {get_status_class(item.freshness_percentage)}")]),
@@ -1426,10 +1434,11 @@ def update_shelf_life_in_modal(up_clicks, down_clicks, current_value):
      State("edit-item-shelf-life", "value"),
      State("edit-item-remaining", "value"),
      State("edit-item-storage", "value"),
+     State("edit-item-ignore-expiry", "value"),
      State("refresh-trigger", "data")],
     prevent_initial_call=True
 )
-def save_edit_modal(n_clicks, item_id, name, shelf_life, remaining, storage, current_trigger):
+def save_edit_modal(n_clicks, item_id, name, shelf_life, remaining, storage, ignore_expiry_value, current_trigger):
     """Save the edited item and close the modal."""
     if not n_clicks or not item_id:
         return dash.no_update, dash.no_update
@@ -1440,7 +1449,8 @@ def save_edit_modal(n_clicks, item_id, name, shelf_life, remaining, storage, cur
         name=name.strip() if name else None,
         shelf_life_days=shelf_life,
         remaining_percentage=remaining,
-        storage_location=storage
+        storage_location=storage,
+        ignore_expiry=bool(ignore_expiry_value)
     )
     
     return {"display": "none"}, current_trigger + 1
