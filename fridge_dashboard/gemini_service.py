@@ -29,8 +29,9 @@ load_dotenv(env_path)
 api_key = os.environ.get("GOOGLE_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else None
 
-# Use Gemini 2.5 Flash
+# Primary model and fallback for when primary is unavailable (503)
 MODEL_ID = "gemini-2.5-flash"
+FALLBACK_MODEL_ID = "gemini-2.5-flash-lite"
 
 
 RECEIPT_PARSING_PROMPT = """
@@ -105,7 +106,7 @@ def _classify_api_error(exc: Exception) -> Dict[str, str]:
     Classify a Gemini API exception into a user-friendly message and error type.
 
     Returns a dict with keys:
-        - "type": one of "quota", "auth", "network", "unknown"
+        - "type": one of "quota", "auth", "network", "unavailable", "unknown"
         - "user_message": human-readable message suitable for the frontend
     """
     err_str = str(exc).lower()
@@ -128,11 +129,19 @@ def _classify_api_error(exc: Exception) -> Dict[str, str]:
                 "is valid and has not expired."
             ),
         }
-    if "deadline" in err_str or "timeout" in err_str or "unavailable" in err_str or "503" in err_str or "504" in err_str:
+    if "unavailable" in err_str or "503" in err_str or "high demand" in err_str:
+        return {
+            "type": "unavailable",
+            "user_message": (
+                "🌐 Gemini API is temporarily unavailable (high demand). "
+                "Retrying with fallback model..."
+            ),
+        }
+    if "deadline" in err_str or "timeout" in err_str or "504" in err_str:
         return {
             "type": "network",
             "user_message": (
-                "🌐 Gemini API is temporarily unavailable or timed out. "
+                "🌐 Gemini API timed out. "
                 "Please check your internet connection and try again."
             ),
         }
@@ -140,6 +149,12 @@ def _classify_api_error(exc: Exception) -> Dict[str, str]:
         "type": "unknown",
         "user_message": f"❌ Gemini API error: {str(exc)}",
     }
+
+
+def _is_unavailable_error(exc: Exception) -> bool:
+    """Return True if the exception is a transient 503/unavailable error worth retrying."""
+    err_str = str(exc).lower()
+    return "unavailable" in err_str or "503" in err_str or "high demand" in err_str
 
 
 def _get_image_mime_type(image_data: bytes) -> str:
@@ -180,67 +195,86 @@ def parse_receipt_image(image_data: bytes) -> Tuple[List[Dict[str, Any]], Option
         print(f"Error: {debug_info['error']}")
         return [], None, debug_info
     
-    try:
-        # Detect MIME type
-        mime_type = _get_image_mime_type(image_data)
-        debug_info["mime_type"] = mime_type
-        
-        # Create image part using the new SDK
-        image_part = types.Part.from_bytes(data=image_data, mime_type=mime_type)
-        
-        # Call Gemini API with explicit timeout (60s) so it never hangs indefinitely
-        response = client.models.generate_content(
-            model=MODEL_ID,
-            contents=[RECEIPT_PARSING_PROMPT, image_part],
-            config=types.GenerateContentConfig(
-                http_options=types.HttpOptions(timeout=60000)  # 60 seconds in ms
+    # Try primary model first, fall back to FALLBACK_MODEL_ID on 503/unavailable
+    models_to_try = [MODEL_ID, FALLBACK_MODEL_ID]
+
+    for attempt, model_id in enumerate(models_to_try):
+        if attempt > 0:
+            print(f"Retrying with fallback model: {model_id}")
+            debug_info["fallback_model"] = model_id
+
+        try:
+            # Detect MIME type
+            mime_type = _get_image_mime_type(image_data)
+            debug_info["mime_type"] = mime_type
+
+            # Create image part using the new SDK
+            image_part = types.Part.from_bytes(data=image_data, mime_type=mime_type)
+
+            # Call Gemini API with explicit timeout (60s) so it never hangs indefinitely
+            response = client.models.generate_content(
+                model=model_id,
+                contents=[RECEIPT_PARSING_PROMPT, image_part],
+                config=types.GenerateContentConfig(
+                    http_options=types.HttpOptions(timeout=60000)  # 60 seconds in ms
+                )
             )
-        )
-        
-        # Store raw response
-        raw_text = response.text
-        debug_info["raw_response"] = raw_text
-        
-        # Parse JSON response
-        response_text = raw_text.strip()
-        
-        # Handle markdown code blocks if present
-        if response_text.startswith("```"):
-            lines = response_text.split("\n")
-            # Remove first line (```json or ```) and last line (```)
-            response_text = "\n".join(lines[1:-1])
-        
-        result = json.loads(response_text)
-        debug_info["parsed_json"] = result
-        
-        items = result.get("items", [])
-        
-        # Extract purchase date if available
-        extracted_date = None
-        date_str = result.get("purchase_date")
-        if date_str:
-            try:
-                extracted_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            except ValueError:
-                debug_info["date_parse_error"] = f"Could not parse date: {date_str}"
-                print(f"Could not parse date: {date_str}")
-        
-        return items, extracted_date, debug_info
-        
-    except json.JSONDecodeError as e:
-        debug_info["error"] = f"JSON parse error: {str(e)}"
-        debug_info["error_type"] = "parse"
-        debug_info["user_message"] = "❌ Could not parse the AI response. Please try uploading the receipt again."
-        print(f"Error parsing Gemini response as JSON: {e}")
-        print(f"Response was: {response.text if 'response' in dir() else 'N/A'}")
-        return [], None, debug_info
-    except Exception as e:
-        classified = _classify_api_error(e)
-        debug_info["error"] = f"Processing error: {str(e)}"
-        debug_info["error_type"] = classified["type"]
-        debug_info["user_message"] = classified["user_message"]
-        print(f"Error processing receipt: {e}")
-        return [], None, debug_info
+
+            debug_info["model_used"] = model_id
+
+            # Store raw response
+            raw_text = response.text
+            debug_info["raw_response"] = raw_text
+
+            # Parse JSON response
+            response_text = raw_text.strip()
+
+            # Handle markdown code blocks if present
+            if response_text.startswith("```"):
+                lines = response_text.split("\n")
+                # Remove first line (```json or ```) and last line (```)
+                response_text = "\n".join(lines[1:-1])
+
+            result = json.loads(response_text)
+            debug_info["parsed_json"] = result
+
+            items = result.get("items", [])
+
+            # Extract purchase date if available
+            extracted_date = None
+            date_str = result.get("purchase_date")
+            if date_str:
+                try:
+                    extracted_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                except ValueError:
+                    debug_info["date_parse_error"] = f"Could not parse date: {date_str}"
+                    print(f"Could not parse date: {date_str}")
+
+            return items, extracted_date, debug_info
+
+        except json.JSONDecodeError as e:
+            debug_info["error"] = f"JSON parse error: {str(e)}"
+            debug_info["error_type"] = "parse"
+            debug_info["user_message"] = "❌ Could not parse the AI response. Please try uploading the receipt again."
+            print(f"Error parsing Gemini response as JSON: {e}")
+            print(f"Response was: {response.text if 'response' in dir() else 'N/A'}")
+            return [], None, debug_info
+        except Exception as e:
+            classified = _classify_api_error(e)
+            if _is_unavailable_error(e) and attempt < len(models_to_try) - 1:
+                # Transient 503 — try the next model
+                print(f"Model {model_id} unavailable (503), will retry with fallback. Error: {e}")
+                debug_info["primary_model_error"] = str(e)
+                continue
+            # Non-retryable error or we've exhausted all models
+            debug_info["error"] = f"Processing error: {str(e)}"
+            debug_info["error_type"] = classified["type"]
+            debug_info["user_message"] = classified["user_message"]
+            print(f"Error processing receipt: {e}")
+            return [], None, debug_info
+
+    # Should not reach here, but just in case
+    return [], None, debug_info
 
 
 def get_shelf_life_for_items(item_names: List[str]) -> Dict[str, Any]:
